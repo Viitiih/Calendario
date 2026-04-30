@@ -1,0 +1,169 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if false; }
+
+    // Helpers
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    function stringOrNull(val) { return val == null || (val is string && val.size() <= 1000); }
+    function boolOrNull(val) { return val == null || val is bool; }
+    function numberOrNull(val) { return val == null || val is number; }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'color']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.color is string && data.color.size() <= 20 &&
+             stringOrNull(data.get('email', null)) &&
+             boolOrNull(data.get('syncTheme', null)) &&
+             stringOrNull(data.get('themeColor', null)) &&
+             boolOrNull(data.get('darkMode', null)) &&
+             boolOrNull(data.get('showGoals', null)) &&
+             numberOrNull(data.get('monthlyGoal', null)) &&
+             boolOrNull(data.get('showExpensesInGoals', null)) &&
+             stringOrNull(data.get('linkedFirebaseUid', null)) &&
+             stringOrNull(data.get('firebaseUid', null));
+    }
+
+    function isValidUserArray(arr) {
+      return arr == null || (arr is list && arr.size() <= 50);
+    }
+
+    function isValidCalendar(data) {
+      return data.keys().hasAll(['id', 'name']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             stringOrNull(data.get('ownerId', null)) &&
+             isValidUserArray(data.get('users', null)) &&
+             isValidUserArray(data.get('pendingUsers', null));
+    }
+
+    function isValidWorkDay(data) {
+      return data.keys().hasAll(['id', 'date', 'userId']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.date is string && data.date.size() <= 30 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             stringOrNull(data.get('hours', null)) &&
+             numberOrNull(data.get('value', null)) &&
+             stringOrNull(data.get('notes', null)) &&
+             stringOrNull(data.get('type', null)) &&
+             stringOrNull(data.get('userColor', null)) &&
+             stringOrNull(data.get('userName', null));
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['id', 'name', 'value', 'date']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.value is number &&
+             data.date is string && data.date.size() <= 30 &&
+             numberOrNull(data.get('quantity', null));
+    }
+
+    function isValidIncome(data) {
+      return data.keys().hasAll(['id', 'name', 'value', 'date', 'userId']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.value is number &&
+             data.date is string && data.date.size() <= 30 &&
+             data.userId is string && data.userId.size() <= 128;
+    }
+
+    function isValidExpenseTemplate(data) {
+      return data.keys().hasAll(['id', 'name']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             (data.get('items', null) == null || (data.items is list && data.items.size() <= 50));
+    }
+
+    function isValidRegistro(data) {
+      // Missing from blueprint but present in queries, let's treat safely
+      return data.keys().hasAll(['id']) && data.id is string && data.id.size() <= 128;
+    }
+
+    function isValidInvite(data) {
+      return data.keys().hasAll(['code', 'calendarId']) &&
+             data.code is string && data.code.size() <= 64 &&
+             data.calendarId is string && data.calendarId.size() <= 128 &&
+             stringOrNull(data.get('createdBy', null)) &&
+             stringOrNull(data.get('createdAt', null));
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated(); // Allowed for fetching collaborators' basic UI setup (relies on obscurity of ID)
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUser(incoming()) && incoming().id == existing().id;
+      allow delete: if isOwner(userId);
+    }
+
+    match /calendars/{calendarId} {
+      // ANY authenticated user with the ID can read/create/update the calendar.
+      allow read: if isAuthenticated() && isValidId(calendarId);
+      allow create: if isAuthenticated() && isValidId(calendarId) && isValidCalendar(incoming());
+      allow update: if isAuthenticated() && isValidId(calendarId) && isValidCalendar(incoming()) && incoming().id == existing().id;
+      allow delete: if isAuthenticated() && (existing().ownerId == request.auth.uid || existing().ownerId == null);
+
+      match /workDays/{workDayId} {
+        // Must validate calendarId and workDayId
+        allow read: if isAuthenticated() && isValidId(calendarId);
+        allow create: if isAuthenticated() && isValidId(calendarId) && isValidId(workDayId) && isValidWorkDay(incoming());
+        allow update: if isAuthenticated() && isValidId(calendarId) && isValidId(workDayId) && isValidWorkDay(incoming()) && incoming().id == existing().id;
+        allow delete: if isAuthenticated() && isValidId(calendarId);
+      }
+
+      match /expenses/{expenseId} {
+        allow read: if isAuthenticated() && isValidId(calendarId);
+        allow create: if isAuthenticated() && isValidId(calendarId) && isValidId(expenseId) && isValidExpense(incoming());
+        allow update: if isAuthenticated() && isValidId(calendarId) && isValidId(expenseId) && isValidExpense(incoming()) && incoming().id == existing().id;
+        allow delete: if isAuthenticated() && isValidId(calendarId);
+      }
+
+      match /incomes/{incomeId} {
+        allow read: if isAuthenticated() && isValidId(calendarId);
+        allow create: if isAuthenticated() && isValidId(calendarId) && isValidId(incomeId) && isValidIncome(incoming());
+        allow update: if isAuthenticated() && isValidId(calendarId) && isValidId(incomeId) && isValidIncome(incoming()) && incoming().id == existing().id;
+        allow delete: if isAuthenticated() && isValidId(calendarId);
+      }
+
+      match /registrosFinanceiros/{recordId} {
+        allow read: if isAuthenticated() && isValidId(calendarId);
+        allow create: if isAuthenticated() && isValidId(calendarId) && isValidId(recordId) && isValidRegistro(incoming());
+        allow update: if isAuthenticated() && isValidId(calendarId) && isValidId(recordId) && isValidRegistro(incoming()) && incoming().id == existing().id;
+        allow delete: if isAuthenticated() && isValidId(calendarId);
+      }
+
+      match /templates/{templateId} {
+        allow read: if isAuthenticated() && isValidId(calendarId);
+        allow create: if isAuthenticated() && isValidId(calendarId) && isValidId(templateId) && isValidExpenseTemplate(incoming());
+        allow update: if isAuthenticated() && isValidId(calendarId) && isValidId(templateId) && isValidExpenseTemplate(incoming()) && incoming().id == existing().id;
+        allow delete: if isAuthenticated() && isValidId(calendarId);
+      }
+
+      match /members/{memberId} {
+        allow read: if isAuthenticated() && isValidId(calendarId);
+        allow create: if isAuthenticated() && isValidId(calendarId) && isValidId(memberId) && isValidUser(incoming());
+        allow update: if isAuthenticated() && isValidId(calendarId) && isValidId(memberId) && isValidUser(incoming()) && incoming().id == existing().id;
+        allow delete: if isAuthenticated() && isValidId(calendarId);
+      }
+    }
+
+    match /invites/{code} {
+      allow read: if isAuthenticated() && isValidId(code);
+      allow create: if isAuthenticated() && isValidId(code) && isValidInvite(incoming());
+      allow update: if isAuthenticated() && isValidId(code) && isValidInvite(incoming()) && incoming().code == existing().code;
+      allow delete: if isAuthenticated();
+    }
+  }
+}

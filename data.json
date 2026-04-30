@@ -1,0 +1,37 @@
+{
+  "calendars": {
+    "cal_molong51_7gg0260": {
+      "id": "cal_molong51_7gg0260",
+      "name": "Meu Calendário",
+      "inviteCode": "3AB53P",
+      "workDays": [],
+      "expenses": [],
+      "templates": [],
+      "ownerId": "y3k1448og",
+      "users": [
+        {
+          "id": "y3k1448og",
+          "name": "Victor",
+          "color": "#EC4899"
+        }
+      ]
+    },
+    "cal_mom1c9i0_pt9rqo5": {
+      "id": "cal_mom1c9i0_pt9rqo5",
+      "name": "Meu Calendário",
+      "inviteCode": "C3BO6T",
+      "workDays": [],
+      "expenses": [],
+      "templates": [],
+      "ownerId": "wuh9hvx0y",
+      "users": [
+        {
+          "id": "wuh9hvx0y",
+          "name": "Viti",
+          "color": "#06B6D4"
+        }
+      ]
+    }
+  },
+  "users": {}
+}

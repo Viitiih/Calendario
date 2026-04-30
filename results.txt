@@ -1,0 +1,2 @@
+node_modules/engine.io-client/build/cjs/index.js:Object.defineProperty(exports, "Fetch", { enumerable: true, get: function () { return polling_fetch_js_1.Fetch; } });
+node_modules/engine.io-client/build/cjs/transports/polling-fetch.js:Object.defineProperty(exports, "__esModule", { value: true });
