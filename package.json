@@ -7,6 +7,8 @@
     "dev": "tsx server.ts",
     "dev:static": "set \"VITE_STATIC_MODE=true\" && vite",
     "build": "vite build",
+    "deploy": "npm run build",
+    "deploy:push": "npm run build && git add . && git commit -m \"deploy\" && git push",
     "preview": "vite preview",
     "serve:docs": "node serve-dist.mjs",
     "start": "node server.ts",
