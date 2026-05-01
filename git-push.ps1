@@ -23,8 +23,13 @@ git commit -m "Primeiro commit do projeto Calendario"
 Write-Host "Definindo branch principal..."
 git branch -M $Branch
 
-Write-Host "Adicionando remote..."
-git remote add origin $RemoteUrl
+Write-Host "Configurando remote origin..."
+$remoteExists = git remote | Select-String -Pattern '^origin$' -Quiet
+if ($remoteExists) {
+  git remote set-url origin $RemoteUrl
+} else {
+  git remote add origin $RemoteUrl
+}
 
 Write-Host "Enviando para o GitHub..."
 git push -u origin $Branch

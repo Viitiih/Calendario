@@ -22,10 +22,10 @@ import { LoginScreen } from "./components/LoginScreen";
 import { PendingScreen } from "./components/PendingScreen";
 import { CalendarView } from "./components/CalendarView";
 
-const FinanceView = React.lazy(() => import("./components/FinanceView"));
-const GoalsView = React.lazy(() => import("./components/GoalsView"));
-const ShareView = React.lazy(() => import("./components/ShareView"));
-const DayModal = React.lazy(() => import("./components/DayModal"));
+const FinanceView = React.lazy(() => import("./components/FinanceView").then(mod => ({ default: mod.FinanceView })));
+const GoalsView = React.lazy(() => import("./components/GoalsView").then(mod => ({ default: mod.GoalsView })));
+const ShareView = React.lazy(() => import("./components/ShareView").then(mod => ({ default: mod.ShareView })));
+const DayModal = React.lazy(() => import("./components/DayModal").then(mod => ({ default: mod.DayModal })));
 const SettingsComponent = React.lazy(() => import("./components/Settings"));
 
 export default function App() {
