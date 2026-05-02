@@ -1,18 +1,21 @@
-import { getAuth } from "firebase/auth";
-export const auth = getAuth(app);
 import * as React from "react";
 import { useState, useMemo, memo } from "react";
-import { 
-  Calendar as CalendarIcon, 
+import {
+  Calendar as CalendarIcon,
   ChevronLeft,
   Share2,
-  User
+  User,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn, USER_COLORS } from "../lib/utils";
+import { registerUser, loginUser } from "../lib/authService";
 
 interface LoginScreenProps {
-  onLogin: (name: string, color: string) => void;
+  onLogin: (name: string, color: string, firebaseUid?: string) => void;
   onValidateInvite?: (code: string) => Promise<boolean>;
   isLoading?: boolean;
   inviteError?: string | null;
@@ -20,44 +23,113 @@ interface LoginScreenProps {
   t: (key: string) => string;
 }
 
-export const LoginScreen = memo(({ 
-  onLogin, 
+export const LoginScreen = memo(({
+  onLogin,
   onValidateInvite,
   isLoading = false,
   inviteError = null,
   calendarUsers,
-  t
+  t,
 }: LoginScreenProps) => {
+  const [authMode, setAuthMode] = useState<"initial" | "invite" | "login" | "register">("initial");
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
-  const [authMode, setAuthMode] = useState<"initial" | "invite">("initial");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [inviteCodeInput, setInviteCodeInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const takenColors = useMemo(() => calendarUsers.map(u => u.color), [calendarUsers]);
+  const takenColors = useMemo(() => calendarUsers.map((u) => u.color), [calendarUsers]);
 
   const handleInviteSubmit = async () => {
     if (!inviteCodeInput || !onValidateInvite) return;
     const success = await onValidateInvite(inviteCodeInput);
-    if (success) {
-      setAuthMode("initial");
-    }
+    if (success) setAuthMode("initial");
   };
 
   const handleEnterClick = () => {
-    let finalName = name.trim() || t('visitor_name') || "Visitante";
+    let finalName = name.trim() || "Visitante";
     let selectedColor = color;
     if (!selectedColor) {
-      const availableColors = USER_COLORS.filter(c => !takenColors.includes(c));
-      selectedColor = availableColors.length > 0 
-        ? availableColors[Math.floor(Math.random() * availableColors.length)]
+      const available = USER_COLORS.filter((c) => !takenColors.includes(c));
+      selectedColor = available.length > 0
+        ? available[Math.floor(Math.random() * available.length)]
         : USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
     }
     onLogin(finalName, selectedColor);
   };
 
+  const handleRegister = async () => {
+    if (!email || !password || !name.trim()) {
+      setError("Preencha nome, email e senha.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const firebaseUser = await registerUser(email, password, name.trim());
+      let selectedColor = color;
+      if (!selectedColor) {
+        const available = USER_COLORS.filter((c) => !takenColors.includes(c));
+        selectedColor = available.length > 0
+          ? available[Math.floor(Math.random() * available.length)]
+          : USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+      }
+      onLogin(name.trim(), selectedColor, firebaseUser.uid);
+    } catch (err: any) {
+      if (err.code === "auth/email-already-in-use") {
+        setError("Este email já está cadastrado. Faça login.");
+      } else {
+        setError("Erro ao cadastrar. Tente novamente.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setError("Preencha email e senha.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const firebaseUser = await loginUser(email, password);
+      const savedUser = localStorage.getItem("worksync_user");
+      let userName = firebaseUser.displayName || "Usuário";
+      let userColor = USER_COLORS[0];
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed.color) userColor = parsed.color;
+        } catch {}
+      }
+      onLogin(userName, userColor, firebaseUser.uid);
+    } catch (err: any) {
+      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
+        setError("Email ou senha incorretos.");
+      } else if (err.code === "auth/user-not-found") {
+        setError("Usuário não encontrado. Cadastre-se.");
+      } else {
+        setError("Erro ao entrar. Tente novamente.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isSubmitting = loading || isLoading;
+
   return (
     <div className="min-h-[100dvh] bg-black flex flex-col items-center p-4 sm:p-8 overflow-y-auto">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-sm bg-[#111111] p-6 sm:p-8 rounded-[32px] shadow-2xl border border-white/5 my-auto"
@@ -67,25 +139,153 @@ export const LoginScreen = memo(({
             <CalendarIcon size={40} />
           </div>
           <h1 className="text-4xl font-black text-white mb-2 tracking-tight">WorkSync</h1>
-          <p className="text-slate-400 font-medium text-sm">{t('app_description')}</p>
+          <p className="text-slate-400 font-medium text-sm">{t("app_description")}</p>
         </div>
-        
-        <div className="space-y-6">
-          {authMode === "initial" ? (
+
+        <div className="space-y-4">
+
+          {/* ── Tela inicial ── */}
+          {authMode === "initial" && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setAuthMode("login")}
+                className="w-full bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <Mail size={18} />
+                Entrar com Email
+              </button>
+
+              <button
+                onClick={() => setAuthMode("register")}
+                className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-4 rounded-2xl border border-white/10 transition-all flex items-center justify-center gap-2"
+              >
+                <User size={16} className="text-blue-400" />
+                Criar Conta
+              </button>
+
+              <button
+                onClick={() => setAuthMode("invite")}
+                className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-4 rounded-2xl border border-white/10 transition-all flex items-center justify-center gap-2"
+              >
+                <Share2 size={16} className="text-amber-400" />
+                {t("enter_with_invite_code")}
+              </button>
+
+              <button
+                onClick={() => {
+                  const selectedColor = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+                  onLogin("Visitante", selectedColor);
+                }}
+                disabled={isSubmitting}
+                className="w-full bg-transparent hover:bg-white/5 text-slate-500 font-bold py-3 rounded-2xl transition-all flex items-center justify-center text-sm"
+              >
+                Pular (Entrar sem Conta)
+              </button>
+            </div>
+          )}
+
+          {/* ── Login ── */}
+          {authMode === "login" && (
             <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <button onClick={() => { setAuthMode("initial"); setError(null); }} className="p-2 text-slate-400 hover:text-white transition-colors">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-lg font-bold text-white">Entrar</h2>
+              </div>
+
               <div className="relative">
-                <input 
-                  type="text" 
-                  placeholder={t('name_placeholder') || "Seu nome"}
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-12 pr-5 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none focus:border-blue-500 text-white font-medium transition-all placeholder:text-slate-600"
+                />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Senha"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                  className="w-full pl-12 pr-12 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none focus:border-blue-500 text-white font-medium transition-all placeholder:text-slate-600"
+                />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <button onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              {error && <p className="text-xs text-red-500 font-bold text-center">{error}</p>}
+
+              <button
+                onClick={handleLogin}
+                disabled={isSubmitting}
+                className="w-full bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Mail size={18} />}
+                Entrar
+              </button>
+
+              <button onClick={() => { setAuthMode("register"); setError(null); }} className="w-full text-slate-400 text-sm font-bold py-2 hover:text-white transition-colors">
+                Não tem conta? Cadastre-se
+              </button>
+            </div>
+          )}
+
+          {/* ── Cadastro ── */}
+          {authMode === "register" && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <button onClick={() => { setAuthMode("initial"); setError(null); }} className="p-2 text-slate-400 hover:text-white transition-colors">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-lg font-bold text-white">Criar Conta</h2>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder={t("name_placeholder") || "Seu nome"}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-12 pr-5 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none focus:border-blue-500 text-white font-medium transition-all focus:ring-4 ring-blue-500/10 placeholder:text-slate-600"
+                  className="w-full pl-12 pr-5 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none focus:border-blue-500 text-white font-medium transition-all placeholder:text-slate-600"
                 />
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+              </div>
+
+              <div className="relative">
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-12 pr-5 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none focus:border-blue-500 text-white font-medium transition-all placeholder:text-slate-600"
+                />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Senha (mín. 6 caracteres)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleRegister()}
+                  className="w-full pl-12 pr-12 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none focus:border-blue-500 text-white font-medium transition-all placeholder:text-slate-600"
+                />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <button onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
 
               <div className="flex justify-center gap-2 flex-wrap pb-2">
-                {USER_COLORS.map(c => {
+                {USER_COLORS.map((c) => {
                   const isTaken = takenColors.includes(c);
                   return (
                     <button
@@ -98,79 +298,61 @@ export const LoginScreen = memo(({
                         isTaken && "opacity-20 cursor-not-allowed hidden"
                       )}
                       style={{ backgroundColor: c }}
-                      aria-label={`Select color ${c}`}
-                      type="button"
                     />
                   );
                 })}
               </div>
 
-              <button 
-                onClick={handleEnterClick}
-                disabled={isLoading}
-                className="w-full bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:bg-slate-800 disabled:text-slate-500 flex items-center justify-center gap-2"
+              {error && <p className="text-xs text-red-500 font-bold text-center">{error}</p>}
+
+              <button
+                onClick={handleRegister}
+                disabled={isSubmitting}
+                className="w-full bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
-                {t('enter')}
+                {isSubmitting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <User size={18} />}
+                Criar Conta
               </button>
 
-              <div className="pt-2">
-                <button 
-                  onClick={() => setAuthMode("invite")}
-                  className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-4 rounded-2xl border border-white/10 transition-all flex items-center justify-center gap-2 mb-2"
-                >
-                  <Share2 size={16} className="text-amber-400" />
-                  {t('enter_with_invite_code')}
-                </button>
-                <button 
-                  onClick={() => {
-                    let selectedColor = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
-                    onLogin("Visitante", selectedColor);
-                  }}
-                  disabled={isLoading}
-                  className="w-full bg-transparent hover:bg-white/5 text-slate-400 font-bold py-3 rounded-2xl transition-all flex items-center justify-center text-sm"
-                >
-                  Pular (Entrar sem Nome)
-                </button>
-              </div>
+              <button onClick={() => { setAuthMode("login"); setError(null); }} className="w-full text-slate-400 text-sm font-bold py-2 hover:text-white transition-colors">
+                Já tem conta? Entrar
+              </button>
             </div>
-          ) : (
+          )}
+
+          {/* ── Convite ── */}
+          {authMode === "invite" && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <button onClick={() => setAuthMode("initial")} className="p-2 text-slate-400 hover:text-white transition-colors">
                   <ChevronLeft size={20} />
                 </button>
-                <h2 className="text-lg font-bold text-white">{t('invite_code')}</h2>
+                <h2 className="text-lg font-bold text-white">{t("invite_code")}</h2>
               </div>
-              
+
               <div className="relative">
-                <input 
-                  type="text" 
-                  placeholder={t('invite_code')}
+                <input
+                  type="text"
+                  placeholder={t("invite_code")}
                   value={inviteCodeInput}
                   onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
                   className="w-full px-5 py-4 bg-black border border-white/10 rounded-2xl focus:outline-none text-white font-bold text-center tracking-widest uppercase"
                 />
               </div>
 
-              {inviteError && (
-                <p className="text-xs text-red-500 font-bold text-center">{inviteError}</p>
-              )}
+              {inviteError && <p className="text-xs text-red-500 font-bold text-center">{inviteError}</p>}
 
-              <button 
+              <button
                 onClick={handleInviteSubmit}
-                disabled={!inviteCodeInput || isLoading}
+                disabled={!inviteCodeInput || isSubmitting}
                 className="w-full bg-amber-500 text-black font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Share2 size={18} />
-                )}
-                {t('validate_invite')}
+                {isSubmitting ? <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" /> : <Share2 size={18} />}
+                {t("validate_invite")}
               </button>
             </div>
           )}
+
         </div>
       </motion.div>
     </div>
