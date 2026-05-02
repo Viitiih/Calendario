@@ -223,23 +223,24 @@ export default function App() {
     }
   }, [handleValidateInvite]);
 
-  const handleLogin = useCallback((name: string, color: string) => {
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      color,
-      syncTheme: true,
-      themeColor: color,
-      darkMode: false,
-    };
-    setUser(newUser);
-    localStorage.setItem("worksync_user", JSON.stringify(newUser));
-  }, []);
+ const handleLogin = useCallback((name: string, color: string, firebaseUid?: string) => {
+  const newUser: User = {
+    id: firebaseUid || Math.random().toString(36).substr(2, 9),
+    name,
+    color,
+    syncTheme: true,
+    themeColor: color,
+    darkMode: false,
+  };
+  setUser(newUser);
+  localStorage.setItem("worksync_user", JSON.stringify(newUser));
+}, []);
 
-  const handleLogout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem("worksync_user");
-  }, []);
+ const handleLogout = useCallback(async () => {
+  await logoutUser();
+  setUser(null);
+  localStorage.removeItem("worksync_user");
+}, []);
 
   const handleUpdateUser = useCallback(
     async (updates: Partial<User>) => {
