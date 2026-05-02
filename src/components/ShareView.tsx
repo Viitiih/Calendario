@@ -82,6 +82,11 @@ export const ShareView = memo(
       });
     };
 
+    const handleRemoveMember = (userId: string) => {
+  const users = (calendarData.users || []).filter((u) => u.id !== userId);
+  updateCalendar({ ...calendarData, users });
+};
+    
     const pendingCount = (calendarData.pendingUsers || []).length;
 
     return (
@@ -434,11 +439,24 @@ export const ShareView = memo(
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">
-                          {t("online_now")}
-                        </span>
-                      </div>
+                     <div className="flex flex-col items-end gap-1">
+  <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">
+    {t("online_now")}
+  </span>
+  {isAdmin && calendarData.ownerId !== u.id && (
+    <button
+      onClick={() => handleRemoveMember(u.id)}
+      className={cn(
+        "w-8 h-8 rounded-xl transition-all flex items-center justify-center active:scale-95 border mt-1",
+        isDarkMode
+          ? "bg-white/5 hover:bg-rose-500/20 text-slate-600 hover:text-rose-400 border-white/5"
+          : "bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-500 border-slate-200"
+      )}
+    >
+      <Trash2 size={14} strokeWidth={2.5} />
+    </button>
+  )}
+</div>
                     </div>
                   ))}
                 </div>
