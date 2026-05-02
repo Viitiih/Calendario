@@ -1,0 +1,68 @@
+// firestore.rules
+// Implante com: firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Bloqueia tudo por padrão
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /calendars/{calendarId} {
+
+      // ── Funções helpers ─────────────────────────────────────────────────────
+
+      // Qualquer um pode ler (necessário para validar convites sem autenticação)
+      // Se quiser restringir apenas a usuários autenticados, adicione: request.auth != null &&
+      allow read: if true;
+
+      // Permite criar um calendário novo
+      allow create: if isValidCalendarCreate();
+
+      // Permite atualizar se for membro ou dono
+      allow update: if isMemberOrOwner() || isJoiningAsPending();
+
+      // Só o dono pode deletar
+      allow delete: if isOwner();
+
+      // ── Validações ──────────────────────────────────────────────────────────
+
+      function isOwner() {
+        // O campo ownerId deve bater com o uid do usuário logado
+        // Se você não usa Firebase Auth ainda, comente as linhas abaixo
+        // return request.auth != null && resource.data.ownerId == request.auth.uid;
+        return true; // temporário — sem Firebase Auth
+      }
+
+      function isMemberOrOwner() {
+        // Verifica se o userId do usuário está na lista de users do calendário
+        // Sem Firebase Auth: aceita qualquer atualização de membro (não recomendado em produção)
+        return resource.data.keys().hasAll(['users']) &&
+               request.resource.data.keys().hasAll(['id', 'name']);
+      }
+
+      function isJoiningAsPending() {
+        // Permite que alguém se adicione à lista pendingUsers
+        let incoming = request.resource.data;
+        let existing = resource.data;
+        // O calendário deve existir e ter um dono
+        return existing.keys().hasAll(['ownerId']) &&
+               incoming.keys().hasAll(['pendingUsers']);
+      }
+
+      function isValidCalendarCreate() {
+        let data = request.resource.data;
+        return data.keys().hasAll(['id', 'name', 'workDays', 'templates']) &&
+               data.id is string &&
+               data.id.size() > 0 &&
+               data.id.size() <= 128 &&
+               data.name is string &&
+               data.name.size() <= 100 &&
+               data.workDays is list &&
+               data.templates is list;
+      }
+    }
+  }
+}
