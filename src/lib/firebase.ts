@@ -1,19 +1,14 @@
-// src/lib/firebase.ts
-// Substitui o backend Express + Socket.io pelo Firebase
-
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// Cole suas credenciais do Firebase Console aqui
-// (Firebase Console → Project Settings → Your apps → SDK setup)
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyB_-jDERcUf05UJlldAxCQnOeuTl9KcUK0",
+  authDomain: "calendari-a01d7.firebaseapp.com",
+  projectId: "calendari-a01d7",
+  storageBucket: "calendari-a01d7.firebasestorage.app",
+  messagingSenderId: "553668013103",
+  appId: "1:553668013103:web:ddd4d8f081c5d6371a6ada",
 };
 
 const app = initializeApp(firebaseConfig);
