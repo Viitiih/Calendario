@@ -1,3 +1,5 @@
+import { getAuth } from "firebase/auth";
+export const auth = getAuth(app);
 import * as React from "react";
 import { useState, useMemo, memo } from "react";
 import { 
