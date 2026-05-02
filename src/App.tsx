@@ -1,19 +1,10 @@
 import * as React from "react";
 import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
-import {
-  isSameDay,
-  parseISO,
-  format,
-} from "date-fns";
+import { isSameDay, parseISO, format } from "date-fns";
 import { ptBR, enUS, es, fr, it, de } from "date-fns/locale";
-import {
-  CalendarDays,
-  DollarSign,
-  TrendingUp,
-  Share2,
-} from "lucide-react";
+import { CalendarDays, DollarSign, TrendingUp, Share2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn, USER_COLORS } from "./lib/utils";
+import { cn } from "./lib/utils";
 import { translations, Language } from "./translations";
 import {
   createCalendar,
@@ -21,6 +12,9 @@ import {
   getCalendarByInviteCode,
   updateCalendar as fbUpdateCalendar,
   subscribeToCalendar,
+  subscribeToUserFinances,
+  saveUserFinances,
+  UserFinances,
 } from "./lib/calendarService";
 
 import { User, CalendarData, Expense, Income, FinanceRecord } from "./types";
@@ -43,7 +37,6 @@ const DayModal = React.lazy(() =>
 const SettingsComponent = React.lazy(() => import("./components/Settings"));
 
 export default function App() {
-  // ─── Idioma ────────────────────────────────────────────────────────────────
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("worksync_language");
     if (saved) return saved as Language;
@@ -66,7 +59,6 @@ export default function App() {
     return locales[language] || ptBR;
   }, [language]);
 
-  // ─── Usuário ───────────────────────────────────────────────────────────────
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem("worksync_user");
     if (!saved) return null;
@@ -77,7 +69,6 @@ export default function App() {
     return null;
   });
 
-  // ─── ID do Calendário ──────────────────────────────────────────────────────
   const [calendarId, setCalendarId] = useState<string>(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const urlId = urlParams.get("calendarId");
@@ -92,7 +83,6 @@ export default function App() {
     return newId;
   });
 
-  // ─── Dados do Calendário ───────────────────────────────────────────────────
   const [calendarData, setCalendarData] = useState<CalendarData>({
     id: calendarId,
     name: "Meu Calendário",
@@ -100,6 +90,12 @@ export default function App() {
     workDays: [],
     expenses: [],
     templates: [],
+  });
+
+  const [userFinances, setUserFinances] = useState<UserFinances>({
+    expenses: [],
+    incomes: [],
+    registrosFinanceiros: [],
   });
 
   const [calendarMode, setCalendarMode] = useState<"work" | "expenses">("work");
@@ -110,15 +106,11 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-
-  // ─── Atualizar calendário ──────────────────────────────────────────────────
   const updateCalendar = useCallback(async (newData: CalendarData) => {
     setCalendarData(newData);
     await fbUpdateCalendar(newData);
   }, []);
 
-  // ─── Inicializar e subscrever ao calendário ────────────────────────────────
-  // Roda quando temos tanto o calendarId quanto o user
   useEffect(() => {
     if (!calendarId || !user) return;
 
@@ -128,16 +120,12 @@ export default function App() {
         let data = await getCalendar(calendarId);
 
         if (!data) {
-          // Calendário não existe → usuário atual é o dono/criador
           data = await createCalendar(calendarId, user.id, user.name, user.color);
-          console.log("Calendário criado no Firestore:", data.id);
         } else {
-          // Calendário existe → verifica se o usuário já é membro ou pendente
           const isMember = (data.users || []).some((u) => u.id === user.id);
           const isPending = (data.pendingUsers || []).some((u) => u.id === user.id);
 
           if (!isMember && !isPending) {
-            // Usuário entrou via convite → vai para pendentes (aprovação do dono)
             const updated: CalendarData = {
               ...data,
               pendingUsers: [
@@ -160,15 +148,21 @@ export default function App() {
 
     initAndSubscribe();
 
-    // Listener em tempo real — propaga mudanças para todos os dispositivos
     const unsubscribe = subscribeToCalendar(calendarId, (data) => {
       setCalendarData(data);
     });
 
     return () => unsubscribe();
-  }, [calendarId, user?.id]); // só re-roda se mudar o calendário ou o usuário
+  }, [calendarId, user?.id]);
 
-  // ─── Convite ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!calendarId || !user) return;
+    const unsubscribe = subscribeToUserFinances(calendarId, user.id, (data) => {
+      setUserFinances(data);
+    });
+    return () => unsubscribe();
+  }, [calendarId, user?.id]);
+
   const handleValidateInvite = useCallback(
     async (code: string): Promise<boolean> => {
       setIsLoading(true);
@@ -194,7 +188,6 @@ export default function App() {
     [t]
   );
 
-  // Lê ?invite= da URL ao entrar
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const inviteCode = urlParams.get("invite");
@@ -205,23 +198,18 @@ export default function App() {
     }
   }, [handleValidateInvite]);
 
-  // ─── Login ─────────────────────────────────────────────────────────────────
-  const handleLogin = useCallback(
-    (name: string, color: string) => {
-      const newUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        name,
-        color,
-        syncTheme: true,
-        themeColor: color,
-        darkMode: false,
-      };
-      setUser(newUser);
-      localStorage.setItem("worksync_user", JSON.stringify(newUser));
-      // O useEffect acima vai disparar com o novo user e inicializar o calendário
-    },
-    []
-  );
+  const handleLogin = useCallback((name: string, color: string) => {
+    const newUser: User = {
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      color,
+      syncTheme: true,
+      themeColor: color,
+      darkMode: false,
+    };
+    setUser(newUser);
+    localStorage.setItem("worksync_user", JSON.stringify(newUser));
+  }, []);
 
   const handleLogout = useCallback(() => {
     setUser(null);
@@ -245,52 +233,39 @@ export default function App() {
     [user, calendarData, updateCalendar]
   );
 
-  // ─── Finance ───────────────────────────────────────────────────────────────
   const onAddFinanceRecord = useCallback(
     async (record: any, type: string) => {
-      if (!calendarId) return;
-      let updatedData = { ...calendarData };
+      if (!calendarId || !user) return;
+      let updated = { ...userFinances };
 
       if ("tipo" in record && "valor" in record) {
-        updatedData = {
-          ...updatedData,
-          registrosFinanceiros: [
-            ...(updatedData.registrosFinanceiros || []),
-            record as FinanceRecord,
-          ],
-        };
+        updated.registrosFinanceiros = [...(updated.registrosFinanceiros || []), record];
+      } else if (type === "expense") {
+        updated.expenses = [...(updated.expenses || []), record];
       } else {
-        if (type === "expense") {
-          updatedData = {
-            ...updatedData,
-            expenses: [...(updatedData.expenses || []), record as Expense],
-          };
-        } else {
-          updatedData = {
-            ...updatedData,
-            incomes: [...(updatedData.incomes || []), record as Income],
-          };
-        }
+        updated.incomes = [...(updated.incomes || []), record];
       }
-      updateCalendar(updatedData);
+
+      setUserFinances(updated);
+      await saveUserFinances(calendarId, user.id, updated);
     },
-    [calendarId, calendarData, updateCalendar]
+    [calendarId, user, userFinances]
   );
 
   const onSaveDay = useCallback(
     async (workDays: any[], expenses: any[], incomes: any[] = []) => {
-      if (!calendarId) return;
+      if (!calendarId || !user) return;
 
-      let updatedData = { ...calendarData };
-      const newWorkDays = [...(updatedData.workDays || [])];
-      const newExpenses = [...(updatedData.expenses || [])];
-      const newIncomes = [...(updatedData.incomes || [])];
-
+      const newWorkDays = [...(calendarData.workDays || [])];
       workDays.forEach((wd) => {
         const idx = newWorkDays.findIndex((w) => w.id === wd.id);
         if (idx >= 0) newWorkDays[idx] = wd;
         else newWorkDays.push(wd);
       });
+      updateCalendar({ ...calendarData, workDays: newWorkDays });
+
+      const newExpenses = [...(userFinances.expenses || [])];
+      const newIncomes = [...(userFinances.incomes || [])];
 
       expenses.forEach((exp) => {
         const idx = newExpenses.findIndex((e) => e.id === exp.id);
@@ -304,22 +279,14 @@ export default function App() {
         else newIncomes.push(inc);
       });
 
-      updatedData = {
-        ...updatedData,
-        workDays: newWorkDays,
-        expenses: newExpenses,
-        incomes: newIncomes,
-      };
-
-      updateCalendar(updatedData);
+      const updatedFinances = { ...userFinances, expenses: newExpenses, incomes: newIncomes };
+      setUserFinances(updatedFinances);
+      await saveUserFinances(calendarId, user.id, updatedFinances);
     },
-    [calendarId, calendarData, updateCalendar]
+    [calendarId, user, calendarData, userFinances, updateCalendar]
   );
 
-  // ─── Navegação ─────────────────────────────────────────────────────────────
-  const handleTabChange = (
-    newTab: "calendar" | "finance" | "share" | "goals" | "settings"
-  ) => {
+  const handleTabChange = (newTab: "calendar" | "finance" | "share" | "goals" | "settings") => {
     const allTabs: typeof newTab[] = ["calendar", "finance", "goals", "share", "settings"];
     const available = allTabs.filter((t) => t !== "goals" || user?.showGoals);
     const newIndex = available.indexOf(newTab);
@@ -330,7 +297,6 @@ export default function App() {
     setActiveTab(newTab);
   };
 
-  // ─── Derivados ─────────────────────────────────────────────────────────────
   const primaryColor = useMemo(() => {
     if (!user) return "#2563eb";
     return user.syncTheme ? user.color : user.themeColor || "#2563eb";
@@ -343,11 +309,8 @@ export default function App() {
     [calendarData.users, user?.id]
   );
 
-  // isPending: está nos pendentes E não é membro
   const isPending = useMemo(
-    () =>
-      !isMember &&
-      (calendarData.pendingUsers || []).some((u) => u.id === user?.id),
+    () => !isMember && (calendarData.pendingUsers || []).some((u) => u.id === user?.id),
     [calendarData.pendingUsers, isMember, user?.id]
   );
 
@@ -362,7 +325,6 @@ export default function App() {
 
   const mainRef = useRef<HTMLElement>(null);
 
-  // ─── Telas de guarda ───────────────────────────────────────────────────────
   if (!user) {
     return (
       <LoginScreen
@@ -376,7 +338,6 @@ export default function App() {
     );
   }
 
-  // Mostra tela de pendente só se não for membro ainda
   if (isPending) {
     return (
       <PendingScreen
@@ -389,7 +350,6 @@ export default function App() {
     );
   }
 
-  // Se ainda está carregando (nem membro nem pendente definido ainda), mostra loading
   if (!isMember && !isLoading && calendarData.ownerId) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -397,16 +357,8 @@ export default function App() {
       </div>
     );
   }
-
   return (
-    <div
-      className={cn(
-        "min-h-screen flex flex-col transition-all duration-300 pb-24 selection:bg-blue-500/30 overflow-x-hidden",
-        isDarkMode
-          ? "bg-[#050505] text-white selection:text-blue-200"
-          : "bg-[#FAFAFA] text-slate-900 selection:text-blue-900"
-      )}
-    >
+    <div className={cn("min-h-screen flex flex-col transition-all duration-300 pb-24 selection:bg-blue-500/30 overflow-x-hidden", isDarkMode ? "bg-[#050505] text-white selection:text-blue-200" : "bg-[#FAFAFA] text-slate-900 selection:text-blue-900")}>
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className={cn("absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000", isDarkMode ? "bg-blue-900/40" : "bg-blue-100/60")} />
         <div className={cn("absolute -bottom-[10%] -right-[5%] w-[60%] h-[60%] rounded-full blur-[100px] opacity-10 transition-colors duration-1000", isDarkMode ? "bg-purple-900/30" : "bg-purple-100/40")} />
@@ -455,7 +407,16 @@ export default function App() {
               <CalendarView currentMonth={currentMonth} setCurrentMonth={setCurrentMonth} calendarData={calendarData} updateCalendar={updateCalendar} user={user} onDateClick={(date) => { setSelectedDate(date); setIsModalOpen(true); }} primaryColor={primaryColor} isDarkMode={isDarkMode} t={t} currentLocale={currentLocale} calendarMode={calendarMode} setCalendarMode={setCalendarMode} />
             ) : activeTab === "finance" ? (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando finanças...</div>}>
-                <FinanceView calendarData={calendarData} updateCalendar={updateCalendar} onAddFinanceRecord={onAddFinanceRecord} primaryColor={primaryColor} isDarkMode={isDarkMode} t={t} currentLocale={currentLocale} currentMonth={currentMonth} />
+                <FinanceView
+                  calendarData={{ ...calendarData, expenses: userFinances.expenses, incomes: userFinances.incomes, registrosFinanceiros: userFinances.registrosFinanceiros }}
+                  updateCalendar={updateCalendar}
+                  onAddFinanceRecord={onAddFinanceRecord}
+                  primaryColor={primaryColor}
+                  isDarkMode={isDarkMode}
+                  t={t}
+                  currentLocale={currentLocale}
+                  currentMonth={currentMonth}
+                />
               </Suspense>
             ) : activeTab === "goals" ? (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando metas...</div>}>
@@ -504,13 +465,12 @@ export default function App() {
             <DayModal
               date={selectedDate}
               user={user}
-              calendarData={calendarData}
+              calendarData={{ ...calendarData, expenses: userFinances.expenses, incomes: userFinances.incomes }}
               updateCalendar={updateCalendar}
               onClose={() => setIsModalOpen(false)}
               initialTab={calendarMode === "expenses" ? "expenses" : "commitments"}
               onSave={(workDays, expenses, incomes = []) => {
                 const affectedWorkDates = workDays.map((wd) => format(parseISO(wd.date), "yyyy-MM-dd"));
-
                 const updatedWorkDays = [...(calendarData.workDays || [])].filter((wd) => {
                   const wdDateStr = format(parseISO(wd.date), "yyyy-MM-dd");
                   const isAffected = affectedWorkDates.includes(wdDateStr);
@@ -523,19 +483,11 @@ export default function App() {
                   }
                   return true;
                 });
-
-                const updatedExpenses = [...(calendarData.expenses || [])].filter((e) => !isSameDay(parseISO(e.date), selectedDate));
-                const updatedIncomes = [...(calendarData.incomes || [])].filter((i) => !isSameDay(parseISO(i.date), selectedDate));
-
+                const updatedExpenses = [...(userFinances.expenses || [])].filter((e) => !isSameDay(parseISO(e.date), selectedDate));
+                const updatedIncomes = [...(userFinances.incomes || [])].filter((i) => !isSameDay(parseISO(i.date), selectedDate));
                 onSaveDay(workDays, expenses, incomes);
-
-                setCalendarData((prev) => ({
-                  ...prev,
-                  workDays: [...updatedWorkDays, ...workDays],
-                  expenses: [...updatedExpenses, ...expenses],
-                  incomes: [...updatedIncomes, ...incomes],
-                }));
-
+                setCalendarData((prev) => ({ ...prev, workDays: [...updatedWorkDays, ...workDays] }));
+                setUserFinances((prev) => ({ ...prev, expenses: [...updatedExpenses, ...expenses], incomes: [...updatedIncomes, ...incomes] }));
                 setIsModalOpen(false);
               }}
               primaryColor={primaryColor}
