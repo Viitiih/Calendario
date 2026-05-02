@@ -20,6 +20,9 @@ interface ShareViewProps {
   primaryColor: string;
   isDarkMode: boolean;
   isAdmin: boolean;
+  onCopyToShared: () => void;
+  onCopyToLocal: () => void;
+  onSync: () => void;
 }
 
 export const ShareView = memo(({ 
@@ -29,29 +32,16 @@ export const ShareView = memo(({
   primaryColor, 
   isDarkMode, 
   isAdmin,
-  t
+  t,
+  onCopyToShared,
+  onCopyToLocal,
+  onSync,
 }: ShareViewProps & { t: (k: any) => string }) => {
   const [copied, setCopied] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<"invite" | "pending">("invite");
   const inviteCode = calendarData.inviteCode || calendarId;
   const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`;
-// Na interface de props, adicione:
-onCopyToShared: () => void;
-onCopyToLocal: () => void;
-onSync: () => void;
 
-// No JSX, adicione esses botões:
-<div className="flex flex-col gap-2 mt-4">
-  <button onClick={onCopyToShared} className="w-full py-3 rounded-xl font-bold text-sm" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
-    ↑ Copiar pessoal → compartilhado
-  </button>
-  <button onClick={onCopyToLocal} className="w-full py-3 rounded-xl font-bold text-sm" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
-    ↓ Copiar compartilhado → pessoal
-  </button>
-  <button onClick={onSync} className="w-full py-3 rounded-xl font-bold text-sm bg-amber-500/10 text-amber-500">
-    ⇄ Sincronizar ambos
-  </button>
-</div>
   const handleCopyLink = () => {
     navigator.clipboard.writeText(inviteLink);
     setCopied(true);
@@ -89,45 +79,39 @@ onSync: () => void;
           <Share2 size={32} strokeWidth={2.5} />
         </div>
         <div className="space-y-1.5 px-4">
-          <h2 className={cn(
-            "text-3xl font-black tracking-tight",
-            isDarkMode ? "text-white" : "text-slate-900"
-          )}>
+          <h2 className={cn("text-3xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
             {t('share_view_title')}
           </h2>
-          <p className={cn(
-            "text-sm font-medium leading-relaxed",
-            isDarkMode ? "text-slate-400" : "text-slate-500"
-          )}>
+          <p className={cn("text-sm font-medium leading-relaxed", isDarkMode ? "text-slate-400" : "text-slate-500")}>
             {t('share_view_subtitle')}
           </p>
         </div>
       </div>
 
-      {/* Internal Tabs - Discord Style */}
-      <div className={cn(
-        "p-1.5 rounded-2xl flex items-center gap-1 border mx-4 sm:mx-0",
-        isDarkMode ? "bg-black/40 border-white/5" : "bg-slate-100 border-slate-200"
-      )}>
+      {/* Botões de sincronização */}
+      <div className="flex flex-col gap-2 px-4 sm:px-0">
+        <button onClick={onCopyToShared} className="w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
+          ↑ Copiar pessoal → compartilhado
+        </button>
+        <button onClick={onCopyToLocal} className="w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
+          ↓ Copiar compartilhado → pessoal
+        </button>
+        <button onClick={onSync} className="w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95 bg-amber-500/10 text-amber-500">
+          ⇄ Sincronizar ambos
+        </button>
+      </div>
+
+      {/* Internal Tabs */}
+      <div className={cn("p-1.5 rounded-2xl flex items-center gap-1 border mx-4 sm:mx-0", isDarkMode ? "bg-black/40 border-white/5" : "bg-slate-100 border-slate-200")}>
         <button 
           onClick={() => setActiveSubTab("invite")}
-          className={cn(
-            "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-            activeSubTab === "invite" 
-              ? (isDarkMode ? "bg-white text-black shadow-lg" : "bg-white text-slate-900 shadow-sm")
-              : (isDarkMode ? "text-slate-400 hover:text-slate-200 hover:bg-white/5" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50")
-          )}
+          className={cn("flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all", activeSubTab === "invite" ? (isDarkMode ? "bg-white text-black shadow-lg" : "bg-white text-slate-900 shadow-sm") : (isDarkMode ? "text-slate-400 hover:text-slate-200 hover:bg-white/5" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"))}
         >
           {t('invite_tab')}
         </button>
         <button 
           onClick={() => setActiveSubTab("pending")}
-          className={cn(
-            "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all relative",
-            activeSubTab === "pending" 
-              ? (isDarkMode ? "bg-white text-black shadow-lg" : "bg-white text-slate-900 shadow-sm")
-              : (isDarkMode ? "text-slate-400 hover:text-slate-200 hover:bg-white/5" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50")
-          )}
+          className={cn("flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all relative", activeSubTab === "pending" ? (isDarkMode ? "bg-white text-black shadow-lg" : "bg-white text-slate-900 shadow-sm") : (isDarkMode ? "text-slate-400 hover:text-slate-200 hover:bg-white/5" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"))}
         >
           {t('pending_tab')}
           {pendingCount > 0 && (
@@ -147,84 +131,44 @@ onSync: () => void;
             exit={{ opacity: 0, scale: 0.95 }}
             className="space-y-8 px-4 sm:px-0"
           >
-            <div className={cn(
-              "p-6 sm:p-8 rounded-[32px] border",
-              isDarkMode ? "bg-[#111111] border-white/5 shadow-2xl" : "bg-white border-slate-200 shadow-xl"
-            )}>
+            <div className={cn("p-6 sm:p-8 rounded-[32px] border", isDarkMode ? "bg-[#111111] border-white/5 shadow-2xl" : "bg-white border-slate-200 shadow-xl")}>
               <div className="space-y-8">
-                
-                {/* Link Share */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <label className={cn(
-                      "text-[10px] font-black uppercase tracking-[0.2em]",
-                      isDarkMode ? "text-slate-500" : "text-slate-400"
-                    )}>
+                    <label className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "text-slate-500" : "text-slate-400")}>
                       {t('invite_link_label')}
                     </label>
-                    <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">
-                      Ativo
-                    </span>
+                    <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Ativo</span>
                   </div>
-                  <div className={cn(
-                    "group flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3 rounded-2xl border transition-all duration-300",
-                    isDarkMode ? "bg-black/50 border-white/5 focus-within:border-white/20" : "bg-slate-50 border-slate-200 focus-within:border-slate-300 shadow-inner"
-                  )}>
+                  <div className={cn("group flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3 rounded-2xl border transition-all duration-300", isDarkMode ? "bg-black/50 border-white/5 focus-within:border-white/20" : "bg-slate-50 border-slate-200 focus-within:border-slate-300 shadow-inner")}>
                     <div className="flex items-center gap-3 flex-1 min-w-0 px-2 py-2 sm:py-0">
                       <LinkIcon className={isDarkMode ? "text-slate-500" : "text-slate-400"} size={18} />
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value={inviteLink}
-                        className={cn(
-                          "bg-transparent border-none focus:outline-none text-sm font-bold flex-1 min-w-0 truncate",
-                          isDarkMode ? "text-slate-300" : "text-slate-700"
-                        )}
-                      />
+                      <input type="text" readOnly value={inviteLink} className={cn("bg-transparent border-none focus:outline-none text-sm font-bold flex-1 min-w-0 truncate", isDarkMode ? "text-slate-300" : "text-slate-700")} />
                     </div>
                     <button 
                       onClick={handleCopyLink}
-                      className={cn(
-                        "sm:px-6 py-3 sm:py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg",
-                        copied 
-                          ? "bg-emerald-500 text-white shadow-emerald-500/20" 
-                          : (isDarkMode ? "bg-white text-black hover:bg-slate-200" : "bg-slate-900 text-white hover:bg-slate-800")
-                      )}
+                      className={cn("sm:px-6 py-3 sm:py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg", copied ? "bg-emerald-500 text-white shadow-emerald-500/20" : (isDarkMode ? "bg-white text-black hover:bg-slate-200" : "bg-slate-900 text-white hover:bg-slate-800"))}
                     >
                       {copied ? <Check size={18} strokeWidth={3} /> : <Copy size={18} strokeWidth={3} />}
                       {copied ? t('copy_success') : t('copy_invite_link')}
                     </button>
                   </div>
-                  <p className="text-[10px] font-medium text-slate-500 ml-1">
-                    {t('invite_link_hint')}
-                  </p>
+                  <p className="text-[10px] font-medium text-slate-500 ml-1">{t('invite_link_hint')}</p>
                 </div>
                 
                 <div className={cn("h-px w-full", isDarkMode ? "bg-white/5" : "bg-slate-100")} />
 
-                {/* Code Share */}
                 <div className="space-y-4">
-                  <label className={cn(
-                    "text-[10px] font-black uppercase tracking-[0.2em]",
-                    isDarkMode ? "text-slate-500" : "text-slate-400"
-                  )}>
+                  <label className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "text-slate-500" : "text-slate-400")}>
                     {t('invite_code_label')}
                   </label>
                   <div className="flex flex-col sm:flex-row items-stretch gap-3">
-                    <div className={cn(
-                      "flex-1 p-4 rounded-2xl border text-center font-mono font-bold tracking-[0.5em] text-2xl transition-all",
-                      isDarkMode ? "bg-black/50 border-white/5 text-white" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner"
-                    )}>
+                    <div className={cn("flex-1 p-4 rounded-2xl border text-center font-mono font-bold tracking-[0.5em] text-2xl transition-all", isDarkMode ? "bg-black/50 border-white/5 text-white" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner")}>
                       {inviteCode}
                     </div>
                     <button 
                       onClick={handleCopyCode}
-                      className={cn(
-                        "sm:px-8 py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-xl",
-                        copiedCode 
-                          ? "bg-emerald-500 text-white" 
-                          : (isDarkMode ? "bg-white/10 hover:bg-white/20 text-white border border-white/5" : "bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200")
-                      )}
+                      className={cn("sm:px-8 py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-xl", copiedCode ? "bg-emerald-500 text-white" : (isDarkMode ? "bg-white/10 hover:bg-white/20 text-white border border-white/5" : "bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200"))}
                     >
                       {copiedCode ? <Check size={20} strokeWidth={3} /> : <Copy size={20} strokeWidth={3} />}
                       {copiedCode ? t('copy_success') : t('copy_invite_link')}
@@ -232,57 +176,29 @@ onSync: () => void;
                   </div>
                 </div>
 
-                <div className={cn(
-                  "mt-6 p-5 rounded-[24px] flex items-start gap-4 border",
-                  isDarkMode ? "bg-white/[0.02] border-white/5" : "bg-slate-50/50 border-slate-100"
-                )}>
-                  <div className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg",
-                    isDarkMode ? "bg-white/5 text-slate-200" : "bg-white text-slate-600"
-                  )}>
+                <div className={cn("mt-6 p-5 rounded-[24px] flex items-start gap-4 border", isDarkMode ? "bg-white/[0.02] border-white/5" : "bg-slate-50/50 border-slate-100")}>
+                  <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg", isDarkMode ? "bg-white/5 text-slate-200" : "bg-white text-slate-600")}>
                     <CalendarDays size={22} />
                   </div>
                   <div className="space-y-1.5 pt-0.5 min-w-0">
-                    <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                      ID do Sistema
-                    </p>
-                    <p className="text-[11px] font-mono text-slate-500 break-all leading-relaxed font-bold">
-                      {calendarId}
-                    </p>
+                    <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>ID do Sistema</p>
+                    <p className="text-[11px] font-mono text-slate-500 break-all leading-relaxed font-bold">{calendarId}</p>
                   </div>
                 </div>
-
               </div>
             </div>
 
-            {/* Members List */}
             <div className="space-y-4 pt-4">
               <div className="flex items-center justify-between px-2">
-                <h3 className={cn(
-                  "text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>
-                  {t('members_title')}
-                </h3>
-                <span className="text-[10px] font-black text-slate-500">
-                  {(calendarData.users || []).length} usuários
-                </span>
+                <h3 className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('members_title')}</h3>
+                <span className="text-[10px] font-black text-slate-500">{(calendarData.users || []).length} usuários</span>
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {(calendarData.users || []).map(u => (
-                  <div 
-                    key={u.id}
-                    className={cn(
-                      "p-5 rounded-3xl flex items-center justify-between border group transition-all duration-300",
-                      isDarkMode ? "bg-[#111111] border-white/5 hover:border-white/10" : "bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md",
-                    )}
-                  >
+                  <div key={u.id} className={cn("p-5 rounded-3xl flex items-center justify-between border group transition-all duration-300", isDarkMode ? "bg-[#111111] border-white/5 hover:border-white/10" : "bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md")}>
                     <div className="flex items-center gap-4 min-w-0 flex-1">
                       <div className="relative">
-                        <div 
-                          className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-2xl shrink-0 transition-transform group-hover:scale-110 group-hover:rotate-3"
-                          style={{ backgroundColor: u.color }}
-                        >
+                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-2xl shrink-0 transition-transform group-hover:scale-110 group-hover:rotate-3" style={{ backgroundColor: u.color }}>
                           {u.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-[#111111] rounded-full shadow-lg" />
@@ -315,23 +231,13 @@ onSync: () => void;
             className="space-y-6 px-4 sm:px-0"
           >
             <div className="px-4 text-center space-y-2">
-              <h3 className={cn("text-lg font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                {t('pending_requests')}
-              </h3>
-              <p className={cn("text-xs font-medium leading-relaxed max-w-xs mx-auto", isDarkMode ? "text-slate-500" : "text-slate-500")}>
-                Novos usuários solicitando acesso aparecerão aqui para sua aprovação.
-              </p>
+              <h3 className={cn("text-lg font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>{t('pending_requests')}</h3>
+              <p className={cn("text-xs font-medium leading-relaxed max-w-xs mx-auto", isDarkMode ? "text-slate-500" : "text-slate-500")}>Novos usuários solicitando acesso aparecerão aqui para sua aprovação.</p>
             </div>
             
             {(calendarData.pendingUsers || []).length === 0 ? (
-              <div className={cn(
-                "py-24 rounded-[40px] border text-center space-y-4 mx-4 sm:mx-0",
-                isDarkMode ? "bg-[#111111] border-white/5" : "bg-slate-50 border-slate-200"
-              )}>
-                <div className={cn(
-                  "w-16 h-16 rounded-[24px] flex items-center justify-center mx-auto shadow-2xl transition-all",
-                  isDarkMode ? "bg-white/5 text-slate-600" : "bg-white text-slate-300"
-                )}>
+              <div className={cn("py-24 rounded-[40px] border text-center space-y-4 mx-4 sm:mx-0", isDarkMode ? "bg-[#111111] border-white/5" : "bg-slate-50 border-slate-200")}>
+                <div className={cn("w-16 h-16 rounded-[24px] flex items-center justify-center mx-auto shadow-2xl transition-all", isDarkMode ? "bg-white/5 text-slate-600" : "bg-white text-slate-300")}>
                   <Users size={32} strokeWidth={2} />
                 </div>
                 <div className="space-y-1">
@@ -342,18 +248,9 @@ onSync: () => void;
             ) : (
               <div className="space-y-3">
                 {(calendarData.pendingUsers || []).map(u => (
-                  <div 
-                    key={u.id}
-                    className={cn(
-                      "p-5 rounded-[32px] flex items-center justify-between border shadow-xl relative overflow-hidden group",
-                      isDarkMode ? "bg-[#111111] border-white/5" : "bg-white border-slate-200"
-                    )}
-                  >
+                  <div key={u.id} className={cn("p-5 rounded-[32px] flex items-center justify-between border shadow-xl relative overflow-hidden group", isDarkMode ? "bg-[#111111] border-white/5" : "bg-white border-slate-200")}>
                     <div className="flex items-center gap-4 min-w-0 flex-1">
-                      <div 
-                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-2xl shrink-0 transition-transform group-hover:scale-105"
-                        style={{ backgroundColor: u.color }}
-                      >
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-2xl shrink-0 transition-transform group-hover:scale-105" style={{ backgroundColor: u.color }}>
                         {u.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex flex-col min-w-0">
@@ -362,19 +259,10 @@ onSync: () => void;
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => handleAccept(u)}
-                        className="h-12 px-6 rounded-2xl bg-white text-black hover:bg-emerald-500 hover:text-white text-xs font-black transition-all active:scale-95 shadow-lg flex items-center justify-center"
-                      >
+                      <button onClick={() => handleAccept(u)} className="h-12 px-6 rounded-2xl bg-white text-black hover:bg-emerald-500 hover:text-white text-xs font-black transition-all active:scale-95 shadow-lg flex items-center justify-center">
                         {t('accept_member')}
                       </button>
-                      <button 
-                        onClick={() => handleDecline(u.id)}
-                        className={cn(
-                          "w-12 h-12 rounded-2xl transition-all flex items-center justify-center active:scale-95 border shadow-sm",
-                          isDarkMode ? "bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border-white/5" : "bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-500 border-slate-200"
-                        )}
-                      >
+                      <button onClick={() => handleDecline(u.id)} className={cn("w-12 h-12 rounded-2xl transition-all flex items-center justify-center active:scale-95 border shadow-sm", isDarkMode ? "bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border-white/5" : "bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-500 border-slate-200")}>
                         <Trash2 size={20} strokeWidth={2.5} />
                       </button>
                     </div>
@@ -388,4 +276,3 @@ onSync: () => void;
     </div>
   );
 });
-
