@@ -566,5 +566,40 @@ export default function App() {
                   const wdDateStr = format(parseISO(wd.date), "yyyy-MM-dd");
                   const isAffected = affectedWorkDates.includes(wdDateStr);
                   if (isAffected && wd.userId === user.id) {
-                    const
-                      
+                    const hasSameType = workDays.some((nwd) =>
+                      format(parseISO(nwd.date), "yyyy-MM-dd") === wdDateStr &&
+                      (nwd.type === wd.type || (!nwd.type && wd.type === "work") || (!wd.type && nwd.type === "work"))
+                    );
+                    return !hasSameType;
+                  }
+                  return true;
+                });
+                const updatedExpenses = [...(userFinances.expenses || [])].filter((e) => !isSameDay(parseISO(e.date), selectedDate));
+                const updatedIncomes = [...(userFinances.incomes || [])].filter((i) => !isSameDay(parseISO(i.date), selectedDate));
+
+                if (calendarMode2 === "personal") {
+                  updateLocalCalendar({ ...localCalendarData, workDays: [...updatedWorkDays, ...workDays] });
+                } else {
+                  updateCalendar({ ...calendarData, workDays: [...updatedWorkDays, ...workDays] });
+                }
+
+                const updatedFinances = {
+                  ...userFinances,
+                  expenses: [...updatedExpenses, ...expenses],
+                  incomes: [...updatedIncomes, ...incomes],
+                };
+                setUserFinances(updatedFinances);
+                if (user) saveUserFinances(calendarId, user.id, updatedFinances);
+                setIsModalOpen(false);
+              }}
+              primaryColor={primaryColor}
+              isDarkMode={isDarkMode}
+              t={t}
+              currentLocale={currentLocale}
+            />
+          </Suspense>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
