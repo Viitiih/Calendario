@@ -35,7 +35,23 @@ export const ShareView = memo(({
   const [activeSubTab, setActiveSubTab] = useState<"invite" | "pending">("invite");
   const inviteCode = calendarData.inviteCode || calendarId;
   const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`;
+// Na interface de props, adicione:
+onCopyToShared: () => void;
+onCopyToLocal: () => void;
+onSync: () => void;
 
+// No JSX, adicione esses botões:
+<div className="flex flex-col gap-2 mt-4">
+  <button onClick={onCopyToShared} className="w-full py-3 rounded-xl font-bold text-sm" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
+    ↑ Copiar pessoal → compartilhado
+  </button>
+  <button onClick={onCopyToLocal} className="w-full py-3 rounded-xl font-bold text-sm" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
+    ↓ Copiar compartilhado → pessoal
+  </button>
+  <button onClick={onSync} className="w-full py-3 rounded-xl font-bold text-sm bg-amber-500/10 text-amber-500">
+    ⇄ Sincronizar ambos
+  </button>
+</div>
   const handleCopyLink = () => {
     navigator.clipboard.writeText(inviteLink);
     setCopied(true);
