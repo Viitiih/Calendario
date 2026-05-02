@@ -38,9 +38,6 @@ export async function createCalendar(
     ownerId,
     inviteCode,
     workDays: [],
-    expenses: [],
-    incomes: [],
-    registrosFinanceiros: [],
     templates: [],
     users: [{ id: ownerId, name: ownerName, color: ownerColor }],
     pendingUsers: [],
@@ -87,8 +84,9 @@ export async function getCalendarByInviteCode(code: string): Promise<CalendarDat
  * substituindo a lógica de broadcast que o servidor fazia via socket.io.
  */
 export async function updateCalendar(calendarData: CalendarData): Promise<void> {
+  const { expenses, incomes, registrosFinanceiros, ...sharedData } = calendarData as any;
   await updateDoc(doc(db, "calendars", calendarData.id), {
-    ...calendarData,
+    ...sharedData,
     updatedAt: serverTimestamp(),
   });
 }
@@ -168,4 +166,37 @@ export async function declinePendingUser(
 
   await updateCalendar(updated);
   return updated;
+}
+export interface UserFinances {
+  expenses: any[];
+  incomes: any[];
+  registrosFinanceiros: any[];
+}
+
+function financeDocId(calendarId: string, userId: string) {
+  return `${calendarId}_${userId}`;
+}
+
+export async function getUserFinances(calendarId: string, userId: string): Promise<UserFinances> {
+  const snap = await getDoc(doc(db, "userFinances", financeDocId(calendarId, userId)));
+  if (!snap.exists()) return { expenses: [], incomes: [], registrosFinanceiros: [] };
+  return snap.data() as UserFinances;
+}
+
+export async function saveUserFinances(calendarId: string, userId: string, finances: UserFinances): Promise<void> {
+  await setDoc(
+    doc(db, "userFinances", financeDocId(calendarId, userId)),
+    { ...finances, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+}
+
+export function subscribeToUserFinances(calendarId: string, userId: string, callback: (data: UserFinances) => void): Unsubscribe {
+  return onSnapshot(doc(db, "userFinances", financeDocId(calendarId, userId)), (snap) => {
+    if (snap.exists()) {
+      callback(snap.data() as UserFinances);
+    } else {
+      callback({ expenses: [], incomes: [], registrosFinanceiros: [] });
+    }
+  });
 }
