@@ -84,6 +84,20 @@ export default function App() {
     return newId;
   });
 
+  const [calendarMode2, setCalendarMode2] = useState<"personal" | "shared">(() => {
+    return (localStorage.getItem("worksync_active_mode") as "personal" | "shared") || "personal";
+  });
+
+  const [localCalendarData, setLocalCalendarData] = useState<CalendarData>({
+    id: "local_temp",
+    name: "Meu Calendário Pessoal",
+    workDays: [],
+    expenses: [],
+    incomes: [],
+    registrosFinanceiros: [],
+    templates: [],
+  });
+
   const [calendarData, setCalendarData] = useState<CalendarData>({
     id: calendarId,
     name: "Meu Calendário",
@@ -112,6 +126,12 @@ export default function App() {
     await fbUpdateCalendar(newData);
   }, []);
 
+  const updateLocalCalendar = useCallback((newData: CalendarData) => {
+    if (!user) return;
+    setLocalCalendarData(newData);
+    saveLocalCalendar(user.id, newData);
+  }, [user]);
+
   useEffect(() => {
     if (!calendarId || !user) return;
 
@@ -119,13 +139,11 @@ export default function App() {
       setIsLoading(true);
       try {
         let data = await getCalendar(calendarId);
-
         if (!data) {
           data = await createCalendar(calendarId, user.id, user.name, user.color);
         } else {
           const isMember = (data.users || []).some((u) => u.id === user.id);
           const isPending = (data.pendingUsers || []).some((u) => u.id === user.id);
-
           if (!isMember && !isPending) {
             const updated: CalendarData = {
               ...data,
@@ -138,7 +156,6 @@ export default function App() {
             data = updated;
           }
         }
-
         setCalendarData(data);
       } catch (err) {
         console.error("Erro ao inicializar calendário:", err);
@@ -163,6 +180,12 @@ export default function App() {
     });
     return () => unsubscribe();
   }, [calendarId, user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    const local = getLocalCalendar(user.id);
+    setLocalCalendarData(local);
+  }, [user?.id]);
 
   const handleValidateInvite = useCallback(
     async (code: string): Promise<boolean> => {
@@ -223,7 +246,6 @@ export default function App() {
       const updatedUser = { ...user, ...updates };
       setUser(updatedUser);
       localStorage.setItem("worksync_user", JSON.stringify(updatedUser));
-
       if (updates.color || updates.name) {
         const updatedUsers = (calendarData.users || []).map((u) =>
           u.id === user.id ? { ...u, name: updatedUser.name, color: updatedUser.color } : u
@@ -234,11 +256,32 @@ export default function App() {
     [user, calendarData, updateCalendar]
   );
 
+  const handleSwitchMode = useCallback((mode: "personal" | "shared") => {
+    setCalendarMode2(mode);
+    localStorage.setItem("worksync_active_mode", mode);
+  }, []);
+
+  const handleCopyToShared = useCallback(() => {
+    const updated = copyWorkDaysToCalendar(localCalendarData, calendarData);
+    updateCalendar(updated);
+  }, [localCalendarData, calendarData, updateCalendar]);
+
+  const handleCopyToLocal = useCallback(() => {
+    const updated = copyWorkDaysToCalendar(calendarData, localCalendarData);
+    updateLocalCalendar(updated);
+  }, [localCalendarData, calendarData, updateLocalCalendar]);
+
+  const handleSync = useCallback(() => {
+    if (!user) return;
+    const merged = mergeCalendars(localCalendarData, calendarData);
+    updateCalendar(merged);
+    updateLocalCalendar(merged);
+  }, [localCalendarData, calendarData, updateCalendar, updateLocalCalendar, user]);
+
   const onAddFinanceRecord = useCallback(
     async (record: any, type: string) => {
       if (!calendarId || !user) return;
       let updated = { ...userFinances };
-
       if ("tipo" in record && "valor" in record) {
         updated.registrosFinanceiros = [...(updated.registrosFinanceiros || []), record];
       } else if (type === "expense") {
@@ -246,7 +289,6 @@ export default function App() {
       } else {
         updated.incomes = [...(updated.incomes || []), record];
       }
-
       setUserFinances(updated);
       await saveUserFinances(calendarId, user.id, updated);
     },
@@ -256,35 +298,35 @@ export default function App() {
   const onSaveDay = useCallback(
     async (workDays: any[], expenses: any[], incomes: any[] = []) => {
       if (!calendarId || !user) return;
-
-      const newWorkDays = [...(calendarData.workDays || [])];
+      const activeCalendar = calendarMode2 === "personal" ? localCalendarData : calendarData;
+      const newWorkDays = [...(activeCalendar.workDays || [])];
       workDays.forEach((wd) => {
         const idx = newWorkDays.findIndex((w) => w.id === wd.id);
         if (idx >= 0) newWorkDays[idx] = wd;
         else newWorkDays.push(wd);
       });
-      updateCalendar({ ...calendarData, workDays: newWorkDays });
-
+      if (calendarMode2 === "personal") {
+        updateLocalCalendar({ ...localCalendarData, workDays: newWorkDays });
+      } else {
+        updateCalendar({ ...calendarData, workDays: newWorkDays });
+      }
       const newExpenses = [...(userFinances.expenses || [])];
       const newIncomes = [...(userFinances.incomes || [])];
-
       expenses.forEach((exp) => {
         const idx = newExpenses.findIndex((e) => e.id === exp.id);
         if (idx >= 0) newExpenses[idx] = exp;
         else newExpenses.push(exp);
       });
-
       incomes.forEach((inc) => {
         const idx = newIncomes.findIndex((i) => i.id === inc.id);
         if (idx >= 0) newIncomes[idx] = inc;
         else newIncomes.push(inc);
       });
-
       const updatedFinances = { ...userFinances, expenses: newExpenses, incomes: newIncomes };
       setUserFinances(updatedFinances);
       await saveUserFinances(calendarId, user.id, updatedFinances);
     },
-    [calendarId, user, calendarData, userFinances, updateCalendar]
+    [calendarId, user, calendarData, localCalendarData, calendarMode2, userFinances, updateCalendar, updateLocalCalendar]
   );
 
   const handleTabChange = (newTab: "calendar" | "finance" | "share" | "goals" | "settings") => {
@@ -370,8 +412,28 @@ export default function App() {
           <h1 className="font-display font-black text-2xl tracking-tighter transition-all group-hover:tracking-normal duration-200">
             <span className={cn("text-gradient bg-linear-to-br", isDarkMode ? "from-white via-slate-200 to-slate-400" : "from-slate-900 via-slate-700 to-slate-600")}>WorkSync</span>
           </h1>
-          <p className="text-[8px] sm:text-[10px] font-black tracking-[0.25em] text-blue-500/60 uppercase">{calendarData.name}</p>
+          <p className="text-[8px] sm:text-[10px] font-black tracking-[0.25em] text-blue-500/60 uppercase">
+            {calendarMode2 === "personal" ? "Pessoal" : calendarData.name}
+          </p>
         </div>
+
+        <div className={cn("flex items-center rounded-xl p-0.5 text-[11px] font-bold gap-0.5", isDarkMode ? "bg-white/[0.05]" : "bg-slate-100")}>
+          <button
+            onClick={() => handleSwitchMode("personal")}
+            className={cn("px-3 py-1.5 rounded-lg transition-all duration-200", calendarMode2 === "personal" ? "text-white shadow-sm" : isDarkMode ? "text-slate-500 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")}
+            style={calendarMode2 === "personal" ? { backgroundColor: primaryColor } : {}}
+          >
+            Pessoal
+          </button>
+          <button
+            onClick={() => handleSwitchMode("shared")}
+            className={cn("px-3 py-1.5 rounded-lg transition-all duration-200", calendarMode2 === "shared" ? "text-white shadow-sm" : isDarkMode ? "text-slate-500 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")}
+            style={calendarMode2 === "shared" ? { backgroundColor: primaryColor } : {}}
+          >
+            Compartilhado
+          </button>
+        </div>
+
         <div className="flex items-center gap-3">
           <button onClick={() => handleTabChange("calendar")} className={cn("w-10 h-10 rounded-2xl flex items-center justify-center transition-all active:scale-90 hover:scale-105", isDarkMode ? "bg-white/[0.03] text-slate-400 hover:text-white border border-white/[0.05] hover:bg-white/[0.08]" : "bg-white text-slate-500 border border-slate-200/60 shadow-soft hover:bg-slate-50 hover:text-slate-900")}>
             <CalendarDays size={18} strokeWidth={2} />
@@ -405,7 +467,20 @@ export default function App() {
             className="w-full"
           >
             {activeTab === "calendar" ? (
-              <CalendarView currentMonth={currentMonth} setCurrentMonth={setCurrentMonth} calendarData={calendarData} updateCalendar={updateCalendar} user={user} onDateClick={(date) => { setSelectedDate(date); setIsModalOpen(true); }} primaryColor={primaryColor} isDarkMode={isDarkMode} t={t} currentLocale={currentLocale} calendarMode={calendarMode} setCalendarMode={setCalendarMode} />
+              <CalendarView
+                currentMonth={currentMonth}
+                setCurrentMonth={setCurrentMonth}
+                calendarData={calendarMode2 === "personal" ? localCalendarData : calendarData}
+                updateCalendar={calendarMode2 === "personal" ? updateLocalCalendar : updateCalendar}
+                user={user}
+                onDateClick={(date) => { setSelectedDate(date); setIsModalOpen(true); }}
+                primaryColor={primaryColor}
+                isDarkMode={isDarkMode}
+                t={t}
+                currentLocale={currentLocale}
+                calendarMode={calendarMode}
+                setCalendarMode={setCalendarMode}
+              />
             ) : activeTab === "finance" ? (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando finanças...</div>}>
                 <FinanceView
@@ -425,7 +500,18 @@ export default function App() {
               </Suspense>
             ) : activeTab === "share" ? (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando compartilhamento...</div>}>
-                <ShareView calendarId={calendarId} calendarData={calendarData} updateCalendar={updateCalendar} primaryColor={primaryColor} isDarkMode={isDarkMode} isAdmin={isAdmin} t={t} />
+                <ShareView
+                  calendarId={calendarId}
+                  calendarData={calendarData}
+                  updateCalendar={updateCalendar}
+                  primaryColor={primaryColor}
+                  isDarkMode={isDarkMode}
+                  isAdmin={isAdmin}
+                  t={t}
+                  onCopyToShared={handleCopyToShared}
+                  onCopyToLocal={handleCopyToLocal}
+                  onSync={handleSync}
+                />
               </Suspense>
             ) : (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando configurações...</div>}>
@@ -466,39 +552,19 @@ export default function App() {
             <DayModal
               date={selectedDate}
               user={user}
-              calendarData={{ ...calendarData, expenses: userFinances.expenses, incomes: userFinances.incomes }}
-              updateCalendar={updateCalendar}
+              calendarData={calendarMode2 === "personal"
+                ? { ...localCalendarData, expenses: userFinances.expenses, incomes: userFinances.incomes }
+                : { ...calendarData, expenses: userFinances.expenses, incomes: userFinances.incomes }
+              }
+              updateCalendar={calendarMode2 === "personal" ? updateLocalCalendar : updateCalendar}
               onClose={() => setIsModalOpen(false)}
               initialTab={calendarMode === "expenses" ? "expenses" : "commitments"}
               onSave={(workDays, expenses, incomes = []) => {
+                const activeCalendar = calendarMode2 === "personal" ? localCalendarData : calendarData;
                 const affectedWorkDates = workDays.map((wd) => format(parseISO(wd.date), "yyyy-MM-dd"));
-                const updatedWorkDays = [...(calendarData.workDays || [])].filter((wd) => {
+                const updatedWorkDays = [...(activeCalendar.workDays || [])].filter((wd) => {
                   const wdDateStr = format(parseISO(wd.date), "yyyy-MM-dd");
                   const isAffected = affectedWorkDates.includes(wdDateStr);
                   if (isAffected && wd.userId === user.id) {
-                    const hasSameType = workDays.some((nwd) =>
-                      format(parseISO(nwd.date), "yyyy-MM-dd") === wdDateStr &&
-                      (nwd.type === wd.type || (!nwd.type && wd.type === "work") || (!wd.type && nwd.type === "work"))
-                    );
-                    return !hasSameType;
-                  }
-                  return true;
-                });
-                const updatedExpenses = [...(userFinances.expenses || [])].filter((e) => !isSameDay(parseISO(e.date), selectedDate));
-                const updatedIncomes = [...(userFinances.incomes || [])].filter((i) => !isSameDay(parseISO(i.date), selectedDate));
-                onSaveDay(workDays, expenses, incomes);
-                setCalendarData((prev) => ({ ...prev, workDays: [...updatedWorkDays, ...workDays] }));
-                setUserFinances((prev) => ({ ...prev, expenses: [...updatedExpenses, ...expenses], incomes: [...updatedIncomes, ...incomes] }));
-                setIsModalOpen(false);
-              }}
-              primaryColor={primaryColor}
-              isDarkMode={isDarkMode}
-              t={t}
-              currentLocale={currentLocale}
-            />
-          </Suspense>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+                    const
+                      
