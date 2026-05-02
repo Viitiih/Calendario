@@ -369,7 +369,7 @@ export const Settings = ({
 
                 <div className="space-y-4 relative z-10">
                   <div className={cn(
-                    "p-6 rounded-2xl border transition-all duration-300 flex flex-col sm:flex-row items-center gap-4 justify-between group",
+                  "p-4 rounded-2xl border transition-all duration-300 flex flex-col gap-4 group",
                     isDarkMode ? "bg-white/5 border-white/10 hover:border-white/20" : "bg-slate-50 border-slate-200 hover:border-slate-300"
                   )}>
                     <div className="flex-1 min-w-0 flex items-center gap-3">
@@ -381,7 +381,7 @@ export const Settings = ({
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('invite_code') || "Código de Convite"}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 w-full">
                       <button 
                         onClick={copyDirectCode}
                         className={cn(
@@ -404,7 +404,7 @@ export const Settings = ({
                         )}
                       >
                         {copied ? <Check size={16} /> : <Share2 size={16} />}
-                        {copied ? t('copy_success') : t('copy_invite_link_short') || "Copiar Link"}
+                       {copied ? t('copy_success') : "Copiar Link"}
                       </button>
                     </div>
                   </div>
