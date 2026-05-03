@@ -162,7 +162,7 @@ export const LoginScreen = memo(({
   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-white transition-all active:scale-[0.98]"
   style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
 >
-                >
+              
                   <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
                     <svg width="16" height="16" viewBox="0 0 48 48">
                       <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.5 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
