@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn, USER_COLORS } from "../lib/utils";
-import { registerUser, loginUser } from "../lib/authService";
+import { registerUser, loginUser, loginWithGoogle } from "../lib/authService";
 
 interface LoginScreenProps {
   onLogin: (name: string, color: string, firebaseUid?: string) => void;
@@ -143,10 +143,25 @@ export const LoginScreen = memo(({
                 </div>
 
                 {/* Google */}
-                <button
-                  onClick={() => alert("Em breve!")}
-                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-slate-400 transition-all active:scale-[0.98] opacity-60"
-                  style={{ background: "#ffffff05", border: "1px solid #ffffff08" }}
+        <button
+  onClick={async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const firebaseUser = await loginWithGoogle();
+      const savedUser = localStorage.getItem("worksync_user");
+      let userColor = USER_COLORS[0];
+      if (savedUser) { try { const p = JSON.parse(savedUser); if (p.color) userColor = p.color; } catch {} }
+      onLogin(firebaseUser.displayName || "Usuário", userColor, firebaseUser.uid);
+    } catch (err: any) {
+      setError("Erro ao entrar com Google. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }}
+  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-white transition-all active:scale-[0.98]"
+  style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
+>
                 >
                   <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
                     <svg width="16" height="16" viewBox="0 0 48 48">
