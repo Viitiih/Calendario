@@ -138,7 +138,6 @@ export default function App() {
   }, [user]);
 
   // Captura resultado do redirect do Google
-  useEffect(() => {
 useEffect(() => {
   getGoogleRedirectResult().then((firebaseUser) => {
     if (!firebaseUser) return;
