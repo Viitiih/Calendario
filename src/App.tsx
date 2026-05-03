@@ -139,19 +139,14 @@ export default function App() {
 
   // Captura resultado do redirect do Google
   useEffect(() => {
-    getGoogleRedirectResult().then((firebaseUser) => {
-      if (!firebaseUser) return;
-      const savedUser = localStorage.getItem("worksync_user");
-      let userColor = "#6366f1";
-      if (savedUser) { try { const p = JSON.parse(savedUser); if (p.color) userColor = p.color; } catch {} }
-      const newUser: User = {
-        id: firebaseUser.uid,
-        name: firebaseUser.displayName || "Usuário",
-        color: userColor,
-        syncTheme: true,
-        themeColor: userColor,
-        darkMode: false,
-      };
+useEffect(() => {
+  getGoogleRedirectResult().then((firebaseUser) => {
+    if (!firebaseUser) return;
+    ...
+  }).catch((err) => {
+    console.error("Erro no redirect do Google:", err);
+  });
+}, []);
       setUser(newUser);
       localStorage.setItem("worksync_user", JSON.stringify(newUser));
     }).catch((err) => {
