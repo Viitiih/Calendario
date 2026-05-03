@@ -170,7 +170,7 @@ export const LoginScreen = memo(({
 
                 {/* Apple */}
                 <button
-                  onClick={() => alert("Em breve!")}
+                  onClick={() => {}}
                   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-slate-400 transition-all active:scale-[0.98] opacity-60"
                   style={{ background: "#ffffff05", border: "1px solid #ffffff08" }}
                 >
@@ -184,7 +184,7 @@ export const LoginScreen = memo(({
 
                 {/* Telefone */}
                 <button
-                  onClick={() => alert("Em breve!")}
+                  onClick={() => {}}
                   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-slate-400 transition-all active:scale-[0.98] opacity-60"
                   style={{ background: "#ffffff05", border: "1px solid #ffffff08" }}
                 >
