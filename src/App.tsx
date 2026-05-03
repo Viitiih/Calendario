@@ -1,4 +1,3 @@
-import { onAuthChanged, logoutUser } from "./lib/authService";
 import { getLocalCalendar, saveLocalCalendar, mergeCalendars, copyWorkDaysToCalendar } from "./lib/localCalendar";
 import * as React from "react";
 import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
@@ -18,7 +17,7 @@ import {
   saveUserFinances,
   UserFinances,
 } from "./lib/calendarService";
-
+import { getGoogleRedirectResult } from "./lib/authService";
 import { User, CalendarData, Expense, Income, FinanceRecord } from "./types";
 import { LoginScreen } from "./components/LoginScreen";
 import { PendingScreen } from "./components/PendingScreen";
@@ -37,7 +36,6 @@ const DayModal = React.lazy(() =>
   import("./components/DayModal").then((mod) => ({ default: mod.DayModal }))
 );
 const SettingsComponent = React.lazy(() => import("./components/Settings"));
-
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("worksync_language");
@@ -70,6 +68,12 @@ export default function App() {
     } catch {}
     return null;
   });
+
+  // Detecta se veio de um convite
+  const cameFromInvite = useMemo(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return !!urlParams.get("invite");
+  }, []);
 
   const [calendarId, setCalendarId] = useState<string>(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -133,6 +137,29 @@ export default function App() {
     saveLocalCalendar(user.id, newData);
   }, [user]);
 
+  // Captura resultado do redirect do Google
+  useEffect(() => {
+    getGoogleRedirectResult().then((firebaseUser) => {
+      if (!firebaseUser) return;
+      const savedUser = localStorage.getItem("worksync_user");
+      let userColor = "#6366f1";
+      if (savedUser) { try { const p = JSON.parse(savedUser); if (p.color) userColor = p.color; } catch {} }
+      const newUser: User = {
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || "Usuário",
+        color: userColor,
+        syncTheme: true,
+        themeColor: userColor,
+        darkMode: false,
+      };
+      setUser(newUser);
+      localStorage.setItem("worksync_user", JSON.stringify(newUser));
+    }).catch((err) => {
+      console.error("Erro no redirect do Google:", err);
+    });
+  }, []);
+
+  // Inicializa calendário compartilhado
   useEffect(() => {
     if (!calendarId || !user) return;
 
@@ -140,23 +167,41 @@ export default function App() {
       setIsLoading(true);
       try {
         let data = await getCalendar(calendarId);
+
         if (!data) {
+          // Calendário não existe → usuário atual é o dono
           data = await createCalendar(calendarId, user.id, user.name, user.color);
         } else {
           const isMember = (data.users || []).some((u) => u.id === user.id);
           const isPending = (data.pendingUsers || []).some((u) => u.id === user.id);
+
           if (!isMember && !isPending) {
-            const updated: CalendarData = {
-              ...data,
-              pendingUsers: [
-                ...(data.pendingUsers || []),
-                { id: user.id, name: user.name, color: user.color },
-              ],
-            };
-            await fbUpdateCalendar(updated);
-            data = updated;
+            if (cameFromInvite) {
+              // Veio de convite → vai para pendentes (precisa de aprovação)
+              const updated: CalendarData = {
+                ...data,
+                pendingUsers: [
+                  ...(data.pendingUsers || []),
+                  { id: user.id, name: user.name, color: user.color },
+                ],
+              };
+              await fbUpdateCalendar(updated);
+              data = updated;
+            } else {
+              // Não veio de convite → é o dono, adiciona direto como membro
+              const updated: CalendarData = {
+                ...data,
+                users: [
+                  ...(data.users || []),
+                  { id: user.id, name: user.name, color: user.color },
+                ],
+              };
+              await fbUpdateCalendar(updated);
+              data = updated;
+            }
           }
         }
+
         setCalendarData(data);
       } catch (err) {
         console.error("Erro ao inicializar calendário:", err);
@@ -197,13 +242,14 @@ export default function App() {
         if (cal) {
           setCalendarId(cal.id);
           localStorage.setItem("worksync_calendar_id", cal.id);
+          // Marca que veio de convite no localStorage
+          localStorage.setItem("worksync_came_from_invite", "true");
           return true;
         } else {
           setInviteError(t("invalid_invite_code"));
           return false;
         }
       } catch (err) {
-        console.error("Erro ao validar convite:", err);
         setInviteError(t("invalid_invite_code"));
         return false;
       } finally {
@@ -217,30 +263,35 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const inviteCode = urlParams.get("invite");
     if (inviteCode) {
+      localStorage.setItem("worksync_came_from_invite", "true");
       handleValidateInvite(inviteCode).then((success) => {
         if (success) window.history.replaceState({}, "", window.location.pathname);
       });
     }
   }, [handleValidateInvite]);
 
- const handleLogin = useCallback((name: string, color: string, firebaseUid?: string) => {
-  const newUser: User = {
-    id: firebaseUid || Math.random().toString(36).substr(2, 9),
-    name,
-    color,
-    syncTheme: true,
-    themeColor: color,
-    darkMode: false,
-  };
-  setUser(newUser);
-  localStorage.setItem("worksync_user", JSON.stringify(newUser));
-}, []);
+  const handleLogin = useCallback((name: string, color: string, firebaseUid?: string) => {
+    const newUser: User = {
+      id: firebaseUid || Math.random().toString(36).substr(2, 9),
+      name,
+      color,
+      syncTheme: true,
+      themeColor: color,
+      darkMode: false,
+    };
+    setUser(newUser);
+    localStorage.setItem("worksync_user", JSON.stringify(newUser));
+  }, []);
 
- const handleLogout = useCallback(async () => {
-  await logoutUser();
-  setUser(null);
-  localStorage.removeItem("worksync_user");
-}, []);
+  const handleLogout = useCallback(async () => {
+    try {
+      const { logoutUser } = await import("./lib/authService");
+      await logoutUser();
+    } catch {}
+    setUser(null);
+    localStorage.removeItem("worksync_user");
+    localStorage.removeItem("worksync_came_from_invite");
+  }, []);
 
   const handleUpdateUser = useCallback(
     async (updates: Partial<User>) => {
@@ -354,10 +405,15 @@ export default function App() {
     [calendarData.users, user?.id]
   );
 
-  const isPending = useMemo(
-    () => !isMember && (calendarData.pendingUsers || []).some((u) => u.id === user?.id),
-    [calendarData.pendingUsers, isMember, user?.id]
-  );
+  // isPending só se veio de convite E está na lista de pendentes
+  const isPending = useMemo(() => {
+    const cameFromInviteStored = localStorage.getItem("worksync_came_from_invite") === "true";
+    return (
+      cameFromInviteStored &&
+      !isMember &&
+      (calendarData.pendingUsers || []).some((u) => u.id === user?.id)
+    );
+  }, [calendarData.pendingUsers, isMember, user?.id]);
 
   const isAdmin = useMemo(
     () => calendarData.ownerId === user?.id,
@@ -395,7 +451,7 @@ export default function App() {
     );
   }
 
-  if (!isMember && !isLoading && calendarData.ownerId) {
+  if (!isMember && isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
