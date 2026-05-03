@@ -134,13 +134,7 @@ export const LoginScreen = memo(({
                   <span className="flex-1 text-left">Criar Conta</span>
                   <span className="text-white/20 text-lg">›</span>
                 </button>
-
-                {/* Divisor */}
-                <div className="flex items-center gap-3 my-1">
-                  <div className="flex-1 h-px" style={{ background: "#ffffff08" }} />
-                  <span className="text-[10px] font-black tracking-[0.2em] text-slate-700">EM BREVE</span>
-                  <div className="flex-1 h-px" style={{ background: "#ffffff08" }} />
-                </div>
+              
 
                 {/* Google */}
         <button
