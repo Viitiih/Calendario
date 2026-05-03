@@ -127,7 +127,7 @@ export const LoginScreen = memo(({
                   onClick={() => setAuthMode("register")}
                   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-white transition-all active:scale-[0.98]"
                   style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
-                >
+                > 
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#6366f115" }}>
                     <User size={16} className="text-indigo-400" />
                   </div>
