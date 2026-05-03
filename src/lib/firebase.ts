@@ -3,12 +3,12 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB_-jDERcUf05UJlldAxCQnOeuTl9KcUK0",
-  authDomain: "calendari-a01d7.firebaseapp.com",
-  projectId: "calendari-a01d7",
-  storageBucket: "calendari-a01d7.firebasestorage.app",
-  messagingSenderId: "553668013103",
-  appId: "1:553668013103:web:ddd4d8f081c5d6371a6ada",
+  apiKey: "AIzaSyAVXqy-qPsFJEV0lgJ6GnsgmSoPUMac2SI",
+  authDomain: "calendario-34edb.firebaseapp.com",
+  projectId: "calendario-34edb",
+  storageBucket: "calendario-34edb.firebasestorage.app",
+  messagingSenderId: "297841465410",
+  appId: "1:297841465410:web:930c0ba96678a30584f5db",
 };
 
 const app = initializeApp(firebaseConfig);
