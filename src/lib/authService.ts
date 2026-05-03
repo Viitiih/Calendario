@@ -1,4 +1,3 @@
-// authService v2
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -6,8 +5,7 @@ import {
   onAuthStateChanged,
   updateProfile,
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "./firebase";
@@ -23,14 +21,15 @@ export async function loginUser(email: string, password: string): Promise<Fireba
   return credential.user;
 }
 
-export async function loginWithGoogle(): Promise<void> {
+export async function loginWithGoogle(): Promise<FirebaseUser> {
   const provider = new GoogleAuthProvider();
-  await signInWithRedirect(auth, provider);
+  provider.setCustomParameters({ prompt: "select_account" });
+  const credential = await signInWithPopup(auth, provider);
+  return credential.user;
 }
 
 export async function getGoogleRedirectResult(): Promise<FirebaseUser | null> {
-  const result = await getRedirectResult(auth);
-  return result ? result.user : null;
+  return null; // não usado mais
 }
 
 export async function logoutUser(): Promise<void> {
