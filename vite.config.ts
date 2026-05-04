@@ -8,12 +8,13 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     base: './',
+    publicDir: false,
     build: {
-  outDir: 'dist',
-  rollupOptions: {
-    cache: false,
-  },
-},
+      outDir: 'dist',
+      rollupOptions: {
+        cache: false,
+      },
+    },
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
@@ -23,8 +24,6 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };
