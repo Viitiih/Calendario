@@ -16,6 +16,7 @@ import {
   registerUser,
   loginUser,
   loginWithGoogle,
+  loginAnonymously,
 } from "../lib/authService";
 
 interface LoginScreenProps {
@@ -35,7 +36,7 @@ export const LoginScreen = memo(({
   calendarUsers,
   t,
 }: LoginScreenProps) => {
-  const [authMode, setAuthMode] = useState<
+  const [authMode, setAuthMode] = useState
     "initial" | "invite" | "login" | "register"
   >("initial");
   const [name, setName] = useState("");
@@ -47,13 +48,11 @@ export const LoginScreen = memo(({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-
   const takenColors = useMemo(
     () => calendarUsers.map((u) => u.color),
     [calendarUsers]
   );
   const isSubmitting = loading || isLoading;
-
 
   const handleInviteSubmit = async () => {
     if (!inviteCodeInput || !onValidateInvite) return;
@@ -147,9 +146,6 @@ export const LoginScreen = memo(({
     }
   };
 
-
-
-
   return (
     <div
       className="min-h-[100dvh] flex flex-col"
@@ -161,8 +157,7 @@ export const LoginScreen = memo(({
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] h-[300px] rounded-full pointer-events-none"
         style={{
-          background:
-            "radial-gradient(circle, #6366f118 0%, transparent 70%)",
+          background: "radial-gradient(circle, #6366f118 0%, transparent 70%)",
         }}
       />
 
@@ -178,8 +173,7 @@ export const LoginScreen = memo(({
           <div
             className="absolute inset-0 rounded-[22px]"
             style={{
-              background:
-                "radial-gradient(circle at 30% 30%, #ffffff10, transparent)",
+              background: "radial-gradient(circle at 30% 30%, #ffffff10, transparent)",
             }}
           />
         </div>
@@ -197,7 +191,6 @@ export const LoginScreen = memo(({
           style={{ background: "#111118", border: "1px solid #ffffff08" }}
         >
           <AnimatePresence mode="wait">
-            {/* ── Inicial ── */}
             {authMode === "initial" && (
               <motion.div
                 key="initial"
@@ -210,7 +203,6 @@ export const LoginScreen = memo(({
                   Escolha como entrar
                 </p>
 
-                {/* Email */}
                 <button
                   onClick={() => setAuthMode("login")}
                   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black text-[15px] text-white transition-all active:scale-[0.98]"
@@ -226,7 +218,6 @@ export const LoginScreen = memo(({
                   <span className="text-white/40 text-lg">›</span>
                 </button>
 
-                {/* Criar conta */}
                 <button
                   onClick={() => setAuthMode("register")}
                   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] text-white transition-all active:scale-[0.98]"
@@ -245,7 +236,6 @@ export const LoginScreen = memo(({
                   <span className="text-white/20 text-lg">›</span>
                 </button>
 
-                {/* Google */}
                 <button
                   onClick={handleGoogleLogin}
                   disabled={isSubmitting}
@@ -257,22 +247,10 @@ export const LoginScreen = memo(({
                 >
                   <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
                     <svg width="16" height="16" viewBox="0 0 48 48">
-                      <path
-                        fill="#FFC107"
-                        d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.5 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"
-                      />
-                      <path
-                        fill="#FF3D00"
-                        d="M6.3 14.7l6.6 4.8C14.7 16.1 19 13 24 13c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.5 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"
-                      />
-                      <path
-                        fill="#4CAF50"
-                        d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.5 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8H6.1C9.5 35.7 16.3 44 24 44z"
-                      />
-                      <path
-                        fill="#1976D2"
-                        d="M43.6 20.1H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.6l6.2 5.2C41 35.4 44 30.1 44 24c0-1.3-.1-2.6-.4-3.9z"
-                      />
+                      <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.5 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z" />
+                      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16.1 19 13 24 13c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.5 6.5 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+                      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.5 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8H6.1C9.5 35.7 16.3 44 24 44z" />
+                      <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.6l6.2 5.2C41 35.4 44 30.1 44 24c0-1.3-.1-2.6-.4-3.9z" />
                     </svg>
                   </div>
                   <span className="flex-1 text-left">Google</span>
@@ -283,23 +261,12 @@ export const LoginScreen = memo(({
                   )}
                 </button>
 
-
-
                 <div className="flex items-center gap-3 my-1">
-                  <div
-                    className="flex-1 h-px"
-                    style={{ background: "#ffffff08" }}
-                  />
-                  <span className="text-[10px] font-black tracking-[0.2em] text-slate-700">
-                    OU
-                  </span>
-                  <div
-                    className="flex-1 h-px"
-                    style={{ background: "#ffffff08" }}
-                  />
+                  <div className="flex-1 h-px" style={{ background: "#ffffff08" }} />
+                  <span className="text-[10px] font-black tracking-[0.2em] text-slate-700">OU</span>
+                  <div className="flex-1 h-px" style={{ background: "#ffffff08" }} />
                 </div>
 
-                {/* Código de convite */}
                 <button
                   onClick={() => setAuthMode("invite")}
                   className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-[15px] transition-all active:scale-[0.98]"
@@ -315,25 +282,32 @@ export const LoginScreen = memo(({
                   >
                     <Share2 size={16} />
                   </div>
-                  <span className="flex-1 text-left">
-                    {t("enter_with_invite_code")}
-                  </span>
+                  <span className="flex-1 text-left">{t("enter_with_invite_code")}</span>
                   <span className="text-[#f59e0b50] text-lg">›</span>
                 </button>
 
-                {/* Convidado */}
+                {/* Visitante — faz login anônimo no Firebase */}
                 <button
-                  onClick={() => {
-                    const c =
-                      USER_COLORS[
-                        Math.floor(Math.random() * USER_COLORS.length)
-                      ];
-                    onLogin("Visitante", c);
+                  onClick={async () => {
+                    setLoading(true);
+                    const c = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+                    try {
+                      const firebaseUser = await loginAnonymously();
+                      onLogin("Visitante", c, firebaseUser.uid);
+                    } catch {
+                      onLogin("Visitante", c);
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
                   disabled={isSubmitting}
-                  className="w-full py-3 text-slate-600 text-sm font-bold hover:text-slate-400 transition-colors text-center mt-1"
+                  className="w-full py-3 text-slate-600 text-sm font-bold hover:text-slate-400 transition-colors text-center mt-1 disabled:opacity-50"
                 >
-                  Pular (Entrar sem Conta)
+                  {isSubmitting && loading ? (
+                    <div className="w-4 h-4 border-2 border-slate-600/20 border-t-slate-600 rounded-full animate-spin mx-auto" />
+                  ) : (
+                    "Pular (Entrar sem Conta)"
+                  )}
                 </button>
 
                 {error && (
@@ -351,7 +325,6 @@ export const LoginScreen = memo(({
               </motion.div>
             )}
 
-            {/* ── Login ── */}
             {authMode === "login" && (
               <motion.div
                 key="login"
@@ -362,10 +335,7 @@ export const LoginScreen = memo(({
               >
                 <div className="flex items-center gap-3 mb-2">
                   <button
-                    onClick={() => {
-                      setAuthMode("initial");
-                      setError(null);
-                    }}
+                    onClick={() => { setAuthMode("initial"); setError(null); }}
                     className="p-2 rounded-xl text-slate-500 hover:text-white transition-colors"
                     style={{ background: "#ffffff08" }}
                   >
@@ -381,15 +351,9 @@ export const LoginScreen = memo(({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-12 pr-5 py-4 rounded-2xl text-white font-medium text-sm focus:outline-none transition-all placeholder:text-slate-600"
-                    style={{
-                      background: "#ffffff08",
-                      border: "1px solid #ffffff0f",
-                    }}
+                    style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
                   />
-                  <Mail
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600"
-                    size={16}
-                  />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
                 </div>
 
                 <div className="relative">
@@ -400,15 +364,9 @@ export const LoginScreen = memo(({
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                     className="w-full pl-12 pr-12 py-4 rounded-2xl text-white font-medium text-sm focus:outline-none transition-all placeholder:text-slate-600"
-                    style={{
-                      background: "#ffffff08",
-                      border: "1px solid #ffffff0f",
-                    }}
+                    style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
                   />
-                  <Lock
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600"
-                    size={16}
-                  />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
                   <button
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
@@ -418,10 +376,7 @@ export const LoginScreen = memo(({
                 </div>
 
                 {error && (
-                  <p
-                    className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl"
-                    style={{ background: "#ef444415" }}
-                  >
+                  <p className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl" style={{ background: "#ef444415" }}>
                     {error}
                   </p>
                 )}
@@ -430,33 +385,21 @@ export const LoginScreen = memo(({
                   onClick={handleLogin}
                   disabled={isSubmitting}
                   className="w-full py-4 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 mt-1"
-                  style={{
-                    background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                    boxShadow: "0 8px 24px -8px #6366f166",
-                  }}
+                  style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)", boxShadow: "0 8px 24px -8px #6366f166" }}
                 >
-                  {isSubmitting ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Mail size={18} />
-                  )}
+                  {isSubmitting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Mail size={18} />}
                   Entrar
                 </button>
 
                 <button
-                  onClick={() => {
-                    setAuthMode("register");
-                    setError(null);
-                  }}
+                  onClick={() => { setAuthMode("register"); setError(null); }}
                   className="text-slate-500 text-sm font-bold text-center py-2 hover:text-white transition-colors"
                 >
-                  Não tem conta?{" "}
-                  <span className="text-indigo-400">Cadastre-se</span>
+                  Não tem conta? <span className="text-indigo-400">Cadastre-se</span>
                 </button>
               </motion.div>
             )}
 
-            {/* ── Cadastro ── */}
             {authMode === "register" && (
               <motion.div
                 key="register"
@@ -467,10 +410,7 @@ export const LoginScreen = memo(({
               >
                 <div className="flex items-center gap-3 mb-2">
                   <button
-                    onClick={() => {
-                      setAuthMode("initial");
-                      setError(null);
-                    }}
+                    onClick={() => { setAuthMode("initial"); setError(null); }}
                     className="p-2 rounded-xl text-slate-500 hover:text-white transition-colors"
                     style={{ background: "#ffffff08" }}
                   >
@@ -486,15 +426,9 @@ export const LoginScreen = memo(({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full pl-12 pr-5 py-4 rounded-2xl text-white font-medium text-sm focus:outline-none transition-all placeholder:text-slate-600"
-                    style={{
-                      background: "#ffffff08",
-                      border: "1px solid #ffffff0f",
-                    }}
+                    style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
                   />
-                  <User
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600"
-                    size={16}
-                  />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
                 </div>
 
                 <div className="relative">
@@ -504,15 +438,9 @@ export const LoginScreen = memo(({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-12 pr-5 py-4 rounded-2xl text-white font-medium text-sm focus:outline-none transition-all placeholder:text-slate-600"
-                    style={{
-                      background: "#ffffff08",
-                      border: "1px solid #ffffff0f",
-                    }}
+                    style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
                   />
-                  <Mail
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600"
-                    size={16}
-                  />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
                 </div>
 
                 <div className="relative">
@@ -523,15 +451,9 @@ export const LoginScreen = memo(({
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleRegister()}
                     className="w-full pl-12 pr-12 py-4 rounded-2xl text-white font-medium text-sm focus:outline-none transition-all placeholder:text-slate-600"
-                    style={{
-                      background: "#ffffff08",
-                      border: "1px solid #ffffff0f",
-                    }}
+                    style={{ background: "#ffffff08", border: "1px solid #ffffff0f" }}
                   />
-                  <Lock
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600"
-                    size={16}
-                  />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
                   <button
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
@@ -550,9 +472,7 @@ export const LoginScreen = memo(({
                         disabled={isTaken}
                         className={cn(
                           "w-8 h-8 rounded-full transition-all border-2",
-                          color === c
-                            ? "scale-110 border-white"
-                            : "border-transparent hover:scale-110",
+                          color === c ? "scale-110 border-white" : "border-transparent hover:scale-110",
                           isTaken && "opacity-20 cursor-not-allowed hidden"
                         )}
                         style={{ backgroundColor: c }}
@@ -562,10 +482,7 @@ export const LoginScreen = memo(({
                 </div>
 
                 {error && (
-                  <p
-                    className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl"
-                    style={{ background: "#ef444415" }}
-                  >
+                  <p className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl" style={{ background: "#ef444415" }}>
                     {error}
                   </p>
                 )}
@@ -574,34 +491,21 @@ export const LoginScreen = memo(({
                   onClick={handleRegister}
                   disabled={isSubmitting}
                   className="w-full py-4 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50"
-                  style={{
-                    background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                    boxShadow: "0 8px 24px -8px #6366f166",
-                  }}
+                  style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)", boxShadow: "0 8px 24px -8px #6366f166" }}
                 >
-                  {isSubmitting ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <User size={18} />
-                  )}
+                  {isSubmitting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <User size={18} />}
                   Criar Conta
                 </button>
 
                 <button
-                  onClick={() => {
-                    setAuthMode("login");
-                    setError(null);
-                  }}
+                  onClick={() => { setAuthMode("login"); setError(null); }}
                   className="text-slate-500 text-sm font-bold text-center py-2 hover:text-white transition-colors"
                 >
-                  Já tem conta?{" "}
-                  <span className="text-indigo-400">Entrar</span>
+                  Já tem conta? <span className="text-indigo-400">Entrar</span>
                 </button>
               </motion.div>
             )}
 
-
-            {/* ── Convite ── */}
             {authMode === "invite" && (
               <motion.div
                 key="invite"
@@ -618,30 +522,20 @@ export const LoginScreen = memo(({
                   >
                     <ChevronLeft size={18} />
                   </button>
-                  <h2 className="text-xl font-black text-white">
-                    {t("invite_code")}
-                  </h2>
+                  <h2 className="text-xl font-black text-white">{t("invite_code")}</h2>
                 </div>
 
                 <input
                   type="text"
                   placeholder={t("invite_code")}
                   value={inviteCodeInput}
-                  onChange={(e) =>
-                    setInviteCodeInput(e.target.value.toUpperCase())
-                  }
+                  onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
                   className="w-full px-5 py-5 rounded-2xl text-white font-black text-center text-2xl tracking-[0.4em] uppercase focus:outline-none placeholder:text-slate-700 placeholder:tracking-normal placeholder:font-medium placeholder:text-base"
-                  style={{
-                    background: "#ffffff08",
-                    border: "1px solid #f59e0b20",
-                  }}
+                  style={{ background: "#ffffff08", border: "1px solid #f59e0b20" }}
                 />
 
                 {inviteError && (
-                  <p
-                    className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl"
-                    style={{ background: "#ef444415" }}
-                  >
+                  <p className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl" style={{ background: "#ef444415" }}>
                     {inviteError}
                   </p>
                 )}
@@ -650,16 +544,9 @@ export const LoginScreen = memo(({
                   onClick={handleInviteSubmit}
                   disabled={!inviteCodeInput || isSubmitting}
                   className="w-full py-4 rounded-2xl font-black text-[15px] text-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50"
-                  style={{
-                    background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                    boxShadow: "0 8px 24px -8px #f59e0b55",
-                  }}
+                  style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", boxShadow: "0 8px 24px -8px #f59e0b55" }}
                 >
-                  {isSubmitting ? (
-                    <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-                  ) : (
-                    <Share2 size={18} />
-                  )}
+                  {isSubmitting ? <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" /> : <Share2 size={18} />}
                   {t("validate_invite")}
                 </button>
               </motion.div>
