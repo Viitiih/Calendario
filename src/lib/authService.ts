@@ -6,6 +6,7 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
+  signInAnonymously,
   User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "./firebase";
@@ -28,9 +29,10 @@ export async function loginWithGoogle(): Promise<FirebaseUser> {
   return credential.user;
 }
 
-
-
-
+export async function loginAnonymously(): Promise<FirebaseUser> {
+  const credential = await signInAnonymously(auth);
+  return credential.user;
+}
 
 export async function getGoogleRedirectResult(): Promise<FirebaseUser | null> {
   return null;
