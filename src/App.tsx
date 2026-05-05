@@ -179,7 +179,17 @@ export default function App() {
     };
     checkRedirect();
   }, []);
+  
+const [authReady, setAuthReady] = useState(false);
 
+useEffect(() => {
+  import("./lib/firebase").then(({ auth }) => {
+    const unsubscribe = auth.onAuthStateChanged(() => {
+      setAuthReady(true);
+      unsubscribe();
+    });
+  });
+}, []);
   // Inicializa calendário compartilhado
   useEffect(() => {
     if (!calendarId || !user) return;
