@@ -305,7 +305,7 @@ export const DayModal = memo(({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -319,7 +319,7 @@ export const DayModal = memo(({
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
         className={cn(
-          "relative w-full max-w-md rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden h-[85vh] sm:h-auto flex flex-col border transition-colors duration-300",
+          "relative w-full max-w-md rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden h-[92vh] sm:h-auto flex flex-col border transition-colors duration-300",
           isDarkMode ? "bg-black border-white/10" : "bg-white border-slate-200"
         )}
       >
