@@ -319,7 +319,7 @@ export const DayModal = memo(({
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
         className={cn(
-          "relative w-full max-w-md rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden h-[92vh] sm:h-auto flex flex-col border transition-colors duration-300",
+          "relative w-full max-w-md rounded-t-[32px] sm:rounded-[32px] shadow-2xl h-[92vh] sm:h-auto flex flex-col border transition-colors duration-300",
           isDarkMode ? "bg-black border-white/10" : "bg-white border-slate-200"
         )}
       >
@@ -401,7 +401,7 @@ export const DayModal = memo(({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-24" ref={scrollRef} style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-6 pb-24" ref={scrollRef} style={{ WebkitOverflowScrolling: "touch" }}>
           <AnimatePresence mode="wait">
             {modalTab === "commitments" ? (
               <motion.div 
