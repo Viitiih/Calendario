@@ -20,7 +20,6 @@ import {
 } from "./lib/calendarService";
 import { getGoogleRedirectResult } from "./lib/authService";
 import { User, CalendarData, Expense, Income, FinanceRecord } from "./types";
-import type { PdfImportResult } from "./lib/pdfImport";
 import { LoginScreen } from "./components/LoginScreen";
 import { PendingScreen } from "./components/PendingScreen";
 import { CalendarView } from "./components/CalendarView";
@@ -395,82 +394,53 @@ export default function App() {
     updateLocalCalendar(merged);
   }, [localCalendarData, calendarData, updateCalendar, updateLocalCalendar, user]);
 
-  const handleImportPdfSchedule = useCallback(
-    async (result: PdfImportResult) => {
-      if (!user || !calendarId) return;
+  const handleExportExcel = useCallback(async () => {
+    if (!user) return;
 
-      const activeCalendar = calendarMode2 === "personal" ? localCalendarData : calendarData;
-      const importedKeys = new Set(
-        result.workDays.map((wd) => `${wd.date.split("T")[0]}_${wd.userId}_${wd.type || "work"}`)
-      );
+    try {
+      const { exportCalendarExcel } = await import("./lib/excelExport");
+      const activeUsers = calendarMode2 === "personal"
+        ? [{ id: user.id, name: user.name, color: user.color }]
+        : ((calendarData.users && calendarData.users.length > 0)
+            ? calendarData.users
+            : [{ id: user.id, name: user.name, color: user.color }]);
 
-      const keptWorkDays = (activeCalendar.workDays || []).filter((wd) => {
-        if (!wd?.date || !wd?.userId) return true;
-        const key = `${wd.date.split("T")[0]}_${wd.userId}_${wd.type || "work"}`;
-        return !importedKeys.has(key);
-      });
+      const activeCalendar = calendarMode2 === "personal"
+        ? {
+            ...localCalendarData,
+            users: activeUsers,
+          }
+        : calendarData;
 
-      const updatedCalendarData: CalendarData = {
-        ...activeCalendar,
-        workDays: [...keptWorkDays, ...result.workDays],
-      };
+      const financesByUserId: Record<string, UserFinances> = {};
 
-      if (calendarMode2 === "personal") {
-        updateLocalCalendar(updatedCalendarData);
+      if (calendarMode2 === "shared") {
+        const entries = await Promise.all(activeUsers.map(async (member) => {
+          if (member.id === user.id) return [member.id, userFinances] as const;
+          try {
+            return [member.id, await getUserFinances(calendarId, member.id)] as const;
+          } catch (err) {
+            console.warn(`Não foi possível carregar finanças de ${member.name}.`, err);
+            return [member.id, { expenses: [], incomes: [], registrosFinanceiros: [] }] as const;
+          }
+        }));
+        entries.forEach(([memberId, finances]) => { financesByUserId[memberId] = finances; });
       } else {
-        await updateCalendar({ ...calendarData, workDays: updatedCalendarData.workDays });
+        financesByUserId[user.id] = userFinances;
       }
 
-      const mergeById = <T extends { id: string }>(current: T[] = [], imported: T[] = []) => {
-        const map = new Map<string, T>();
-        current.forEach((item) => map.set(item.id, item));
-        imported.forEach((item) => map.set(item.id, item));
-        return Array.from(map.values());
-      };
-
-      const importedFinancesByUser = result.financesByUserId || {
-        [user.id]: {
-          expenses: result.expenses,
-          incomes: result.incomes,
-          registrosFinanceiros: result.registrosFinanceiros,
-        },
-      };
-
-      const allowedFinanceUserIds = calendarMode2 === "shared"
-        ? new Set((calendarData.users || []).map((u) => u.id))
-        : new Set([user.id]);
-
-      for (const [targetUserId, importedFinances] of Object.entries(importedFinancesByUser)) {
-        if (!allowedFinanceUserIds.has(targetUserId)) continue;
-
-        const currentFinances = targetUserId === user.id
-          ? userFinances
-          : await getUserFinances(calendarId, targetUserId);
-
-        const updatedFinances: UserFinances = {
-          expenses: mergeById(currentFinances.expenses || [], importedFinances.expenses || []),
-          incomes: mergeById(currentFinances.incomes || [], importedFinances.incomes || []),
-          registrosFinanceiros: mergeById(
-            currentFinances.registrosFinanceiros || [],
-            importedFinances.registrosFinanceiros || []
-          ),
-        };
-
-        if (targetUserId === user.id) setUserFinances(updatedFinances);
-        await saveUserFinances(calendarId, targetUserId, updatedFinances);
-      }
-    },
-    [
-      user,
-      calendarId,
-      calendarMode2,
-      localCalendarData,
-      calendarData,
-      userFinances,
-      updateLocalCalendar,
-      updateCalendar,
-    ]
-  );
+      exportCalendarExcel({
+        calendarData: activeCalendar,
+        users: activeUsers,
+        financesByUserId,
+        currentMonth,
+        fileName: `calendario_${format(currentMonth, "yyyy-MM")}.xlsx`,
+      });
+    } catch (err) {
+      console.error("Erro ao exportar Excel:", err);
+      alert("Não foi possível exportar o Excel. Tente novamente.");
+    }
+  }, [calendarData, calendarId, calendarMode2, currentMonth, localCalendarData, user, userFinances]);
 
   const onAddFinanceRecord = useCallback(
     async (record: any, type: string) => {
@@ -745,7 +715,7 @@ export default function App() {
               </Suspense>
             ) : (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando configurações...</div>}>
-                <SettingsComponent user={user} onUpdateUser={handleUpdateUser} onLogout={handleLogout} isDarkMode={isDarkMode} calendarId={calendarId} inviteCode={calendarData.inviteCode || calendarId} calendarUsers={calendarData.users || []} language={language} onUpdateLanguage={(lang) => { setLanguage(lang); handleUpdateUser({ language: lang }); }} t={t} calendarMode={calendarMode2} onImportPdfSchedule={handleImportPdfSchedule} />
+                <SettingsComponent user={user} onUpdateUser={handleUpdateUser} onLogout={handleLogout} isDarkMode={isDarkMode} calendarId={calendarId} inviteCode={calendarData.inviteCode || calendarId} calendarUsers={calendarData.users || []} language={language} onUpdateLanguage={(lang) => { setLanguage(lang); handleUpdateUser({ language: lang }); }} onExportExcel={handleExportExcel} t={t} />
               </Suspense>
             )}
           </motion.div>
