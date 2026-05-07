@@ -22,13 +22,13 @@ import {
   Plus,
   Bell,
   BellOff,
-  FileText
+  FileSpreadsheet,
+  Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User } from "../types";
-import type { PdfImportResult, PdfImportSummary } from "../lib/pdfImport";
 import { Language } from "../translations";
-import { cn, USER_COLORS, formatCurrency } from "../lib/utils";
+import { cn, USER_COLORS } from "../lib/utils";
 
 interface SettingsProps {
   user: User;
@@ -40,9 +40,8 @@ interface SettingsProps {
   calendarUsers: any[];
   language: Language;
   onUpdateLanguage: (lang: Language) => void;
+  onExportExcel?: () => Promise<void> | void;
   t: (key: string) => string;
-  calendarMode: "personal" | "shared";
-  onImportPdfSchedule: (result: PdfImportResult) => Promise<void>;
 }
 
 export const Settings = ({ 
@@ -55,21 +54,19 @@ export const Settings = ({
   calendarUsers,
   language,
   onUpdateLanguage,
-  t,
-  calendarMode,
-  onImportPdfSchedule
+  onExportExcel,
+  t
 }: SettingsProps) => {
   const [activeSubTab, setActiveSubTab] = useState<"profile" | "app" | "invites">("profile");
   const [name, setName] = useState(user.name);
   const [selectedColor, setSelectedColor] = useState(user.color);
   const [isLangExpanded, setIsLangExpanded] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return "denied";
     return Notification.permission;
   });
-  const [isPdfImporting, setIsPdfImporting] = useState(false);
-  const [pdfImportSummary, setPdfImportSummary] = useState<PdfImportSummary | null>(null);
 
   const copyInviteLink = () => {
     const link = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`;
@@ -116,6 +113,18 @@ export const Settings = ({
     }
   };
 
+
+  const handleExportExcelClick = async () => {
+    if (!onExportExcel || isExportingExcel) return;
+
+    try {
+      setIsExportingExcel(true);
+      await onExportExcel();
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   const handleExport = () => {
     const data: Record<string, string> = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -159,49 +168,6 @@ export const Settings = ({
       }
     };
     reader.readAsText(file);
-  };
-
-  const handlePdfImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsPdfImporting(true);
-    setPdfImportSummary(null);
-
-    try {
-      const { importSchedulePdf } = await import("../lib/pdfImport");
-      const usersForImport = calendarMode === "shared" ? calendarUsers : [user];
-      const result = await importSchedulePdf(file, user, usersForImport);
-      const totalImported = result.workDays.length + result.expenses.length + result.incomes.length + result.registrosFinanceiros.length;
-
-      if (totalImported === 0) {
-        alert("Não encontrei compromissos ou valores financeiros nesse PDF. Verifique se ele tem texto selecionável e datas/horários no padrão da tabela.");
-        return;
-      }
-
-      await onImportPdfSchedule(result);
-      setPdfImportSummary(result.summary);
-
-      const pessoasResumo = result.summary.pessoas
-        .map((p) => `${p.nome}: ${p.horasTotais}h | final ${formatCurrency(p.saldoFinal)}`)
-        .join("\n");
-
-      alert(
-        `PDF importado com sucesso!\n\n` +
-        `Período: ${result.summary.primeiraData || "--"} até ${result.summary.ultimaData || "--"}\n` +
-        `Horas totais: ${result.summary.horasTotais}h\n` +
-        `Ganhos: ${formatCurrency(result.summary.ganhos)}\n` +
-        `Gastos: ${formatCurrency(result.summary.gastos)}\n` +
-        `Final do mês: ${formatCurrency(result.summary.saldoFinal)}\n\n` +
-        pessoasResumo
-      );
-    } catch (err: any) {
-      console.error("Erro ao importar PDF:", err);
-      alert(err?.message || "Não consegui importar esse PDF.");
-    } finally {
-      setIsPdfImporting(false);
-      e.target.value = "";
-    }
   };
 
   const handleToggleNotifications = async () => {
@@ -687,8 +653,36 @@ export const Settings = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                   <button 
+                <div className="space-y-3">
+                  <button 
+                    onClick={handleExportExcelClick}
+                    disabled={!onExportExcel || isExportingExcel}
+                    className={cn(
+                      "w-full p-4 rounded-xl border flex items-center justify-between gap-4 transition-all active:scale-95 group disabled:opacity-60 disabled:cursor-not-allowed",
+                      isDarkMode ? "bg-emerald-500/10 border-emerald-400/20 hover:bg-emerald-500/15" : "bg-emerald-50 border-emerald-100 hover:bg-emerald-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 text-left">
+                      <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                        isDarkMode ? "bg-emerald-400/10 text-emerald-300" : "bg-white text-emerald-600"
+                      )}>
+                        {isExportingExcel ? <Loader2 size={20} className="animate-spin" /> : <FileSpreadsheet size={20} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-emerald-100" : "text-emerald-900")}>
+                          Exportar Excel do mês
+                        </p>
+                        <p className="text-[8px] text-slate-400 font-bold mt-0.5 leading-relaxed">
+                          Resumo comparativo + abas separadas por pessoa
+                        </p>
+                      </div>
+                    </div>
+                    <Download size={18} className="text-emerald-500 shrink-0 group-hover:translate-y-0.5 transition-transform" />
+                  </button>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
                       onClick={handleExport}
                       className={cn(
                         "p-4 rounded-xl border flex flex-col items-center gap-2 transition-all active:scale-95 group",
@@ -698,7 +692,7 @@ export const Settings = ({
                       <Download size={20} className="text-emerald-500 group-hover:bounce" />
                       <div className="text-center">
                         <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-200" : "text-slate-900")}>
-                          {t('export_data')}
+                          Backup JSON
                         </p>
                         <p className="text-[8px] text-slate-400 font-bold mt-0.5">{t('export_desc')}</p>
                       </div>
@@ -722,90 +716,8 @@ export const Settings = ({
                         <p className="text-[8px] text-slate-400 font-bold mt-0.5">{t('import_desc')}</p>
                       </div>
                     </label>
-
-                    <label className={cn(
-                      "col-span-2 p-4 rounded-xl border flex items-center gap-3 transition-all active:scale-95 group cursor-pointer",
-                      isPdfImporting && "opacity-60 pointer-events-none",
-                      isDarkMode ? "bg-black border-white/5 hover:bg-white/5" : "bg-slate-50 border-slate-100 hover:bg-slate-100"
-                    )}>
-                      <input 
-                        type="file" 
-                        accept="application/pdf,.pdf" 
-                        onChange={handlePdfImport} 
-                        className="hidden" 
-                      />
-                      <div className={cn(
-                        "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0",
-                        isDarkMode ? "bg-rose-500/10 text-rose-400" : "bg-rose-50 text-rose-600"
-                      )}>
-                        <FileText size={21} className={isPdfImporting ? "animate-pulse" : "group-hover:bounce"} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-200" : "text-slate-900")}>
-                          {isPdfImporting ? "Importando PDF..." : "Importar PDF de escala"}
-                        </p>
-                        <p className="text-[8px] text-slate-400 font-bold mt-0.5 leading-relaxed">
-                          Lê datas, horários, tipo de compromisso, ganhos, gastos, saldo e horas totais. Modo atual: {calendarMode === "personal" ? "Pessoal" : "Compartilhado"}.
-                        </p>
-                      </div>
-                    </label>
-                </div>
-
-                {pdfImportSummary && (
-                  <div className={cn(
-                    "mt-4 p-4 rounded-2xl border space-y-4",
-                    isDarkMode ? "bg-emerald-500/5 border-emerald-500/15" : "bg-emerald-50/60 border-emerald-100"
-                  )}>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Último PDF importado</p>
-                      <p className="text-[9px] text-slate-400 font-bold mt-0.5">
-                        {pdfImportSummary.primeiraData || "--"} até {pdfImportSummary.ultimaData || "--"} · {pdfImportSummary.pessoas.length} pessoa(s)
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        ["Horas totais", `${pdfImportSummary.horasTotais}h`],
-                        ["Ganhos", formatCurrency(pdfImportSummary.ganhos)],
-                        ["Gastos", formatCurrency(pdfImportSummary.gastos)],
-                        ["Final do mês", formatCurrency(pdfImportSummary.saldoFinal)],
-                      ].map(([label, value]) => (
-                        <div key={label} className={cn(
-                          "p-3 rounded-xl border",
-                          isDarkMode ? "bg-black/30 border-white/5" : "bg-white/70 border-emerald-100/70"
-                        )}>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                          <p className={cn("text-xs font-black mt-1", isDarkMode ? "text-slate-100" : "text-slate-900")}>{value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Separado por pessoa</p>
-                      {pdfImportSummary.pessoas.map((person) => (
-                        <div key={person.userId} className={cn(
-                          "p-3 rounded-xl border",
-                          isDarkMode ? "bg-black/30 border-white/5" : "bg-white/80 border-emerald-100/70"
-                        )}>
-                          <div className="flex items-center justify-between gap-3">
-                            <p className={cn("text-xs font-black truncate", isDarkMode ? "text-slate-100" : "text-slate-900")}>{person.nome}</p>
-                            <p className={cn(
-                              "text-xs font-black whitespace-nowrap",
-                              person.saldoFinal >= 0 ? "text-emerald-500" : "text-red-500"
-                            )}>
-                              {formatCurrency(person.saldoFinal)}
-                            </p>
-                          </div>
-                          <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] font-bold text-slate-400">
-                            <span>{person.horasTotais}h</span>
-                            <span>{formatCurrency(person.ganhos)}</span>
-                            <span>{formatCurrency(person.gastos)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Danger Zone */}
