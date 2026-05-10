@@ -138,3 +138,36 @@
 body {
   @apply font-sans antialiased selection:bg-blue-500/20 selection:text-blue-500;
 }
+
+/* Ajustes extras de performance para iPhone/celulares */
+@media (max-width: 640px) {
+  .fade-in {
+    animation: none !important;
+  }
+
+  .shadow-premium,
+  .shadow-2xl,
+  .shadow-lg {
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12) !important;
+  }
+
+  .calendar-grid {
+    contain: layout paint style;
+  }
+
+  .calendar-day-btn,
+  nav.fixed,
+  header.sticky {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

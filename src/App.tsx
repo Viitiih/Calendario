@@ -549,6 +549,33 @@ export default function App() {
     document.documentElement.classList.toggle("dark", isDarkMode);
   }, [isDarkMode]);
 
+  const activeCalendarForView = useMemo(() => {
+    if (!user) return calendarData;
+    if (calendarMode2 === "personal") {
+      return {
+        ...localCalendarData,
+        users: [{ id: user.id, name: user.name, color: user.color }],
+      };
+    }
+    return calendarData;
+  }, [calendarMode2, localCalendarData, calendarData, user?.id, user?.name, user?.color]);
+
+  const calendarWithUserFinances = useMemo(() => ({
+    ...calendarData,
+    expenses: userFinances.expenses,
+    incomes: userFinances.incomes,
+    registrosFinanceiros: userFinances.registrosFinanceiros,
+  }), [calendarData, userFinances.expenses, userFinances.incomes, userFinances.registrosFinanceiros]);
+
+  const dayModalCalendarData = useMemo(() => {
+    const baseCalendar = calendarMode2 === "personal" ? localCalendarData : calendarData;
+    return {
+      ...baseCalendar,
+      expenses: userFinances.expenses,
+      incomes: userFinances.incomes,
+    };
+  }, [calendarMode2, localCalendarData, calendarData, userFinances.expenses, userFinances.incomes]);
+
   const mainRef = useRef<HTMLElement>(null);
 
   if (!user) {
@@ -596,14 +623,14 @@ export default function App() {
 
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0" aria-hidden="true">
         <div
-          className={cn("absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full blur-[80px] opacity-15 transition-colors duration-1000 will-change-auto", isDarkMode ? "bg-blue-900/40" : "bg-blue-100/60")}
+          className={cn("hidden sm:block absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full blur-[56px] opacity-12 transition-colors duration-500", isDarkMode ? "bg-blue-900/30" : "bg-blue-100/50")}
         />
         <div
-          className={cn("absolute -bottom-[10%] -right-[5%] w-[60%] h-[60%] rounded-full blur-[80px] opacity-10 transition-colors duration-1000 will-change-auto", isDarkMode ? "bg-purple-900/30" : "bg-purple-100/40")}
+          className={cn("hidden sm:block absolute -bottom-[10%] -right-[5%] w-[60%] h-[60%] rounded-full blur-[56px] opacity-10 transition-colors duration-500", isDarkMode ? "bg-purple-900/25" : "bg-purple-100/35")}
         />
       </div>
 
-      <header className={cn("px-3 sm:px-6 py-3 sm:py-5 sticky top-0 z-40 flex flex-wrap justify-between items-center gap-3 transition-all duration-300 backdrop-blur-2xl border-b", isDarkMode ? "bg-black/60 border-white/[0.03] shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)]" : "bg-white/70 border-slate-200/60 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]")}>
+      <header className={cn("px-3 sm:px-6 py-3 sm:py-5 sticky top-0 z-40 flex flex-wrap justify-between items-center gap-3 transition-all duration-200 backdrop-blur-sm sm:backdrop-blur-xl border-b", isDarkMode ? "bg-black/60 border-white/[0.03] shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)]" : "bg-white/70 border-slate-200/60 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]")}>
         <div className="flex min-w-0 flex-1 flex-col group cursor-default order-1">
           <h1 className="font-display font-black text-xl sm:text-2xl tracking-tighter transition-all group-hover:tracking-normal duration-200 leading-none">
             <span className={cn("text-gradient bg-linear-to-br", isDarkMode ? "from-white via-slate-200 to-slate-400" : "from-slate-900 via-slate-700 to-slate-600")}>WorkSync</span>
@@ -649,26 +676,13 @@ export default function App() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: direction * -20 }}
             transition={{ type: "tween", duration: 0.2, ease: "easeOut" }}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.1}
-            onDragEnd={(_, info) => {
-              const threshold = 50;
-              const allTabs: typeof activeTab[] = ["calendar", "finance", "goals", "share", "settings"];
-              const available = allTabs.filter((t) => t !== "goals" || user.showGoals);
-              const currentIndex = available.indexOf(activeTab as any);
-              if (info.offset.x > threshold && currentIndex > 0) handleTabChange(available[currentIndex - 1]);
-              else if (info.offset.x < -threshold && currentIndex < available.length - 1) handleTabChange(available[currentIndex + 1]);
-            }}
             className="w-full"
           >
             {activeTab === "calendar" ? (
               <CalendarView
                 currentMonth={currentMonth}
                 setCurrentMonth={setCurrentMonth}
-                calendarData={calendarMode2 === "personal"
-                  ? { ...localCalendarData, users: [{ id: user.id, name: user.name, color: user.color }] }
-                  : calendarData}
+                calendarData={activeCalendarForView}
                 updateCalendar={calendarMode2 === "personal" ? updateLocalCalendar : updateCalendar}
                 user={user}
                 onDateClick={(date) => { setSelectedDate(date); setIsModalOpen(true); }}
@@ -683,7 +697,7 @@ export default function App() {
             ) : activeTab === "finance" ? (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando finanças...</div>}>
                 <FinanceView
-                  calendarData={{ ...calendarData, expenses: userFinances.expenses, incomes: userFinances.incomes, registrosFinanceiros: userFinances.registrosFinanceiros }}
+                  calendarData={calendarWithUserFinances}
                   updateCalendar={updateCalendar}
                   onAddFinanceRecord={onAddFinanceRecord}
                   primaryColor={primaryColor}
@@ -722,7 +736,7 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <nav className={cn("fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-0.75rem)] sm:w-[calc(100%-2rem)] max-w-[480px] h-[68px] sm:h-[76px] px-2 min-[390px]:px-3 sm:px-6 flex justify-around items-center z-[100] transition-all duration-300 backdrop-blur-3xl rounded-[28px] sm:rounded-[32px] border", isDarkMode ? "bg-[#090909]/80 border-white/[0.05] shadow-[0_20px_40px_rgba(0,0,0,0.6)]" : "bg-white/80 border-slate-200/60 shadow-[0_20px_40px_rgba(0,0,0,0.08)]", isModalOpen && "hidden")}>
+      <nav className={cn("fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-0.75rem)] sm:w-[calc(100%-2rem)] max-w-[480px] h-[68px] sm:h-[76px] px-2 min-[390px]:px-3 sm:px-6 flex justify-around items-center z-[100] transition-all duration-200 backdrop-blur-sm sm:backdrop-blur-xl rounded-[28px] sm:rounded-[32px] border", isDarkMode ? "bg-[#090909]/80 border-white/[0.05] shadow-[0_20px_40px_rgba(0,0,0,0.6)]" : "bg-white/80 border-slate-200/60 shadow-[0_20px_40px_rgba(0,0,0,0.08)]", isModalOpen && "hidden")}>
         {[
           { id: "calendar", icon: CalendarDays, label: t("calendar") },
           { id: "finance", icon: DollarSign, label: t("finance") },
@@ -753,10 +767,7 @@ export default function App() {
             <DayModal
               date={selectedDate}
               user={user}
-              calendarData={calendarMode2 === "personal"
-                ? { ...localCalendarData, expenses: userFinances.expenses, incomes: userFinances.incomes }
-                : { ...calendarData, expenses: userFinances.expenses, incomes: userFinances.incomes }
-              }
+              calendarData={dayModalCalendarData}
               updateCalendar={calendarMode2 === "personal" ? updateLocalCalendar : updateCalendar}
               onClose={() => setIsModalOpen(false)}
               initialTab={calendarMode === "expenses" ? "expenses" : "commitments"}
