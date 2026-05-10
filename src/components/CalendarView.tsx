@@ -1,5 +1,5 @@
 import * as React from "react";
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { 
   format, 
   startOfMonth, 
@@ -70,12 +70,20 @@ export const CalendarView = memo(({
   setCalendarMode,
   isLoading = false
 }: CalendarViewProps) => {
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
+  const monthStart = useMemo(() => startOfMonth(currentMonth), [currentMonth]);
+  const monthEnd = useMemo(() => endOfMonth(monthStart), [monthStart]);
+  const startDate = useMemo(() => startOfWeek(monthStart), [monthStart]);
+  const endDate = useMemo(() => endOfWeek(monthEnd), [monthEnd]);
+  const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
 
-  const days = eachDayOfInterval({ start: startDate, end: endDate });
+  const days = useMemo(() => eachDayOfInterval({ start: startDate, end: endDate }), [startDate, endDate]);
+  const userColorById = useMemo(() => {
+    const map: Record<string, string> = {};
+    (calendarData.users || []).forEach((u: any) => {
+      if (u?.id && u?.color) map[u.id] = u.color;
+    });
+    return map;
+  }, [calendarData.users]);
   const [isEraseMode, setIsEraseMode] = useState(false);
 
   const nextMonth = () => setCurrentMonth(addDays(monthEnd, 1));
@@ -94,7 +102,7 @@ export const CalendarView = memo(({
     }
   };
 
-  const dayDataMap = React.useMemo(() => {
+  const dayDataMap = useMemo(() => {
     const map: Record<string, { work: any[], study: any[], expenses: any[] }> = {};
     
     (calendarData.workDays || []).forEach(wd => {
@@ -118,7 +126,7 @@ export const CalendarView = memo(({
     return map;
   }, [calendarData.workDays, calendarData.expenses]);
 
-  const stats = React.useMemo(() => {
+  const stats = useMemo(() => {
     const monthWorkDays = (calendarData.workDays || []).filter(wd => {
       if (!wd || !wd.date) return false;
       const d = parseISO(wd.date);
@@ -212,17 +220,6 @@ export const CalendarView = memo(({
             ? "bg-black/40 border-white/[0.03] shadow-2xl" 
             : "bg-white border-slate-200/60 shadow-premium"
         )}
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.2}
-        onDragEnd={(_, info) => {
-          const swipeThreshold = 50;
-          if (info.offset.x < -swipeThreshold) {
-            nextMonth();
-          } else if (info.offset.x > swipeThreshold) {
-            prevMonth();
-          }
-        }}
       >
         {/* Subtle pattern background for calendar card */}
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
@@ -355,7 +352,7 @@ export const CalendarView = memo(({
             const isStudyDay = data.study.length > 0;
             const hasExpenses = data.expenses.length > 0;
             const isCurrentMonth = isSameMonth(day, monthStart);
-            const isToday = isSameDay(day, new Date());
+            const isToday = dateKey === todayKey;
             const isOutOfMonth = !isCurrentMonth && !(calendarMode === 'work' ? (isWorkDay || isStudyDay) : hasExpenses);
             
             return (
@@ -385,8 +382,7 @@ export const CalendarView = memo(({
                 <div className="absolute bottom-1 left-1 flex flex-wrap gap-1 z-10 max-w-[90%] pointer-events-none">
                     {/* Work dots */}
                     {calendarMode === 'work' && data.work.map((wd, idx) => {
-                        const u = (calendarData.users || []).find(u => u && u.id === wd.userId);
-                        const color = (u ? u.color : (wd.userId?.startsWith('#') ? wd.userId : null)) || primaryColor || "#3B82F6";
+                        const color = userColorById[wd.userId] || (wd.userId?.startsWith?.('#') ? wd.userId : null) || primaryColor || "#3B82F6";
                         return (
                           <div 
                             key={`work-${wd.id || idx}`}
