@@ -198,12 +198,19 @@ export const FinanceView = memo(({
     };
   }, [calendarData.workDays, periodTransactions, currentMonth, dateFilterType, dateFilterDay, dateFilterStart, dateFilterEnd]);
 
-  const filteredTransactions = monthTransactions.filter(r => {
-    const matchesSearch = r.descricao.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = activeCategory === "all" || r.categoria === activeCategory;
-    const matchesType = (transactionType === "expense" && r.tipo === "gasto") || (transactionType === "income" && r.tipo === "receber");
-    return matchesSearch && matchesCategory && matchesType;
-  }).sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+  const filteredTransactions = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return monthTransactions
+      .filter(r => {
+        const matchesSearch = !normalizedSearch || r.descricao.toLowerCase().includes(normalizedSearch);
+        const matchesCategory = activeCategory === "all" || r.categoria === activeCategory;
+        const matchesType = (transactionType === "expense" && r.tipo === "gasto") || (transactionType === "income" && r.tipo === "receber");
+        return matchesSearch && matchesCategory && matchesType;
+      })
+      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+  }, [monthTransactions, searchTerm, activeCategory, transactionType]);
+
+  const visibleTransactions = useMemo(() => filteredTransactions.slice(0, 80), [filteredTransactions]);
 
   const handleSaveTransaction = () => {
     if (!newItemName) {
@@ -542,15 +549,12 @@ export const FinanceView = memo(({
                   <p className="tech-label opacity-40">Nenhum registro encontrado</p>
                 </div>
               ) : (
-                filteredTransactions.map((r, idx) => {
+                visibleTransactions.map((r) => {
                   const isIncome = r.tipo === "receber";
                   const Icon = getCategoryIcon(r.categoria, isIncome);
                   const color = getCategoryColor(r.categoria, isIncome);
                   return (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
+                    <div
                       key={r.id}
                       onClick={() => setSelectedRecordId(r.id)}
                       className={cn(
@@ -580,9 +584,17 @@ export const FinanceView = memo(({
                           {isIncome ? "+" : "-"}{formatCurrency(Math.abs(r.valor))}
                         </p>
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })
+              )}
+              {filteredTransactions.length > visibleTransactions.length && (
+                <div className={cn(
+                  "px-4 py-3 rounded-2xl border text-center text-[11px] font-bold opacity-70",
+                  isDarkMode ? "bg-white/[0.02] border-white/[0.04]" : "bg-white border-slate-200/50"
+                )}>
+                  Mostrando os 80 registros mais recentes. Use os filtros para encontrar registros antigos.
+                </div>
               )}
             </div>
       </div>
