@@ -171,3 +171,35 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Hotfix de performance em celulares: preserva o visual, mas corta os efeitos que mais travam no iPhone */
+@media (max-width: 640px) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  [class*="shadow-["],
+  .shadow-2xl,
+  .shadow-xl,
+  .shadow-lg,
+  .shadow-premium,
+  .shadow-soft {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.10) !important;
+  }
+
+  .calendar-day-btn,
+  .calendar-day-btn *,
+  nav.fixed,
+  header.sticky {
+    will-change: auto !important;
+  }
+
+  .calendar-grid {
+    contain: layout paint style;
+  }
+
+  * {
+    scroll-behavior: auto !important;
+  }
+}

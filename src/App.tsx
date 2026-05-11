@@ -24,19 +24,25 @@ import { LoginScreen } from "./components/LoginScreen";
 import { PendingScreen } from "./components/PendingScreen";
 import { CalendarView } from "./components/CalendarView";
 
-const FinanceView = React.lazy(() =>
-  import("./components/FinanceView").then((mod) => ({ default: mod.FinanceView }))
-);
-const GoalsView = React.lazy(() =>
-  import("./components/GoalsView").then((mod) => ({ default: mod.GoalsView }))
-);
-const ShareView = React.lazy(() =>
-  import("./components/ShareView").then((mod) => ({ default: mod.ShareView }))
-);
-const DayModal = React.lazy(() =>
-  import("./components/DayModal").then((mod) => ({ default: mod.DayModal }))
-);
-const SettingsComponent = React.lazy(() => import("./components/Settings"));
+const loadFinanceView = () => import("./components/FinanceView").then((mod) => ({ default: mod.FinanceView }));
+const loadGoalsView = () => import("./components/GoalsView").then((mod) => ({ default: mod.GoalsView }));
+const loadShareView = () => import("./components/ShareView").then((mod) => ({ default: mod.ShareView }));
+const loadDayModal = () => import("./components/DayModal").then((mod) => ({ default: mod.DayModal }));
+const loadSettings = () => import("./components/Settings");
+
+const FinanceView = React.lazy(loadFinanceView);
+const GoalsView = React.lazy(loadGoalsView);
+const ShareView = React.lazy(loadShareView);
+const DayModal = React.lazy(loadDayModal);
+const SettingsComponent = React.lazy(loadSettings);
+
+const preloadHeavySections = () => {
+  void loadFinanceView();
+  void loadGoalsView();
+  void loadShareView();
+  void loadDayModal();
+  void loadSettings();
+};
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => {
@@ -297,6 +303,24 @@ export default function App() {
     setLocalCalendarData(local);
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const preload = () => preloadHeavySections();
+    const win = window as typeof window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (win.requestIdleCallback) {
+      const idleId = win.requestIdleCallback(preload, { timeout: 1800 });
+      return () => win.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = window.setTimeout(preload, 700);
+    return () => window.clearTimeout(timeoutId);
+  }, [user?.id]);
+
   const handleValidateInvite = useCallback(
     async (code: string): Promise<boolean> => {
       setIsLoading(true);
@@ -493,16 +517,20 @@ export default function App() {
     [calendarId, user, calendarData, localCalendarData, calendarMode2, userFinances, updateCalendar, updateLocalCalendar]
   );
 
-  const handleTabChange = (newTab: "calendar" | "finance" | "share" | "goals" | "settings") => {
+  const handleTabChange = useCallback((newTab: "calendar" | "finance" | "share" | "goals" | "settings") => {
     const allTabs: typeof newTab[] = ["calendar", "finance", "goals", "share", "settings"];
     const available = allTabs.filter((t) => t !== "goals" || user?.showGoals);
     const newIndex = available.indexOf(newTab);
     const currentIndex = available.indexOf(activeTab as any);
+
     if (newIndex !== -1 && currentIndex !== -1) {
       setDirection(newIndex > currentIndex ? 1 : -1);
     }
-    setActiveTab(newTab);
-  };
+
+    React.startTransition(() => {
+      setActiveTab(newTab);
+    });
+  }, [activeTab, user?.showGoals]);
 
   const primaryColor = useMemo(() => {
     if (!user) return "#2563eb";
