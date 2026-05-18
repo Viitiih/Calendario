@@ -380,6 +380,31 @@ export default function App() {
     localStorage.removeItem("worksync_came_from_invite");
   }, []);
 
+  const handleLeaveCalendar = useCallback(async () => {
+    if (!user || !calendarId) return;
+
+    try {
+      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("./lib/firebase");
+
+      const currentCal = calendarData;
+      const updatedUsers = (currentCal.users || []).filter((u) => u.id !== user.id);
+      const updatedPending = (currentCal.pendingUsers || []).filter((u) => u.id !== user.id);
+
+      await updateDoc(doc(db, "calendars", calendarId), {
+        users: updatedUsers,
+        pendingUsers: updatedPending,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Erro ao sair do calendário:", e);
+    }
+
+    const newId = `cal_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+    setCalendarId(newId);
+    localStorage.setItem("worksync_calendar_id", newId);
+  }, [user, calendarId, calendarData]);
+
   const handleUpdateUser = useCallback(
     async (updates: Partial<User>) => {
       if (!user) return;
@@ -757,7 +782,7 @@ export default function App() {
               </Suspense>
             ) : (
               <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Carregando configurações...</div>}>
-                <SettingsComponent user={user} onUpdateUser={handleUpdateUser} onLogout={handleLogout} isDarkMode={isDarkMode} calendarId={calendarId} inviteCode={calendarData.inviteCode || calendarId} calendarUsers={calendarData.users || []} language={language} onUpdateLanguage={(lang) => { setLanguage(lang); handleUpdateUser({ language: lang }); }} onExportExcel={handleExportExcel} t={t} />
+                <SettingsComponent user={user} onUpdateUser={handleUpdateUser} onLogout={handleLogout} onLeaveCalendar={handleLeaveCalendar} isDarkMode={isDarkMode} calendarId={calendarId} inviteCode={calendarData.inviteCode || calendarId} calendarUsers={calendarData.users || []} language={language} onUpdateLanguage={(lang) => { setLanguage(lang); handleUpdateUser({ language: lang }); }} onExportExcel={handleExportExcel} t={t} />
               </Suspense>
             )}
           </motion.div>
