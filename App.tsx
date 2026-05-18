@@ -380,20 +380,30 @@ export default function App() {
     localStorage.removeItem("worksync_came_from_invite");
   }, []);
 
-  const handleLeaveCalendar = useCallback(() => {
+  const handleLeaveCalendar = useCallback(async () => {
+    if (!user || !calendarId) return;
+
+    try {
+      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("./lib/firebase");
+
+      const currentCal = calendarData;
+      const updatedUsers = (currentCal.users || []).filter((u) => u.id !== user.id);
+      const updatedPending = (currentCal.pendingUsers || []).filter((u) => u.id !== user.id);
+
+      await updateDoc(doc(db, "calendars", calendarId), {
+        users: updatedUsers,
+        pendingUsers: updatedPending,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Erro ao sair do calendário:", e);
+    }
+
     const newId = `cal_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
     setCalendarId(newId);
     localStorage.setItem("worksync_calendar_id", newId);
-    setCalendarData({
-      id: newId,
-      name: "Meu Calendário",
-      workDays: [],
-      expenses: [],
-      incomes: [],
-      registrosFinanceiros: [],
-      templates: [],
-    });
-  }, []);
+  }, [user, calendarId, calendarData]);
 
   const handleUpdateUser = useCallback(
     async (updates: Partial<User>) => {
