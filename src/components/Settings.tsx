@@ -34,6 +34,7 @@ interface SettingsProps {
   user: User;
   onUpdateUser: (u: Partial<User>) => void;
   onLogout: () => void;
+  onLeaveCalendar: () => void;
   isDarkMode: boolean;
   calendarId: string;
   inviteCode: string;
@@ -47,7 +48,8 @@ interface SettingsProps {
 export const Settings = ({ 
   user, 
   onUpdateUser, 
-  onLogout, 
+  onLogout,
+  onLeaveCalendar,
   isDarkMode, 
   calendarId,
   inviteCode,
@@ -373,7 +375,23 @@ export const Settings = ({
               className="w-full py-4 rounded-xl border border-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/5 transition-all flex items-center justify-center gap-2"
             >
               <LogOut size={16} />
-              {t('logout')}
+              Sair da Conta
+            </button>
+            <button 
+              onClick={() => {
+                if (window.confirm('Tem certeza que quer sair deste calendário? Você entrará em um calendário novo e vazio.')) {
+                  onLeaveCalendar();
+                }
+              }}
+              className={cn(
+                "w-full py-4 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2",
+                isDarkMode
+                  ? "border-amber-500/20 text-amber-400 hover:bg-amber-500/5"
+                  : "border-amber-500/30 text-amber-600 hover:bg-amber-500/5"
+              )}
+            >
+              <X size={16} />
+              Sair do Calendário
             </button>
           </div>
         </div>
