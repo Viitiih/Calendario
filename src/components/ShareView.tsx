@@ -195,7 +195,7 @@ export const ShareView = memo(
 
         <div
           className={cn(
-            "p-1.5 rounded-2xl grid grid-cols-2 sm:grid-cols-4 gap-1 border mx-0 sm:mx-0 w-full",
+            "p-1.5 rounded-2xl grid grid-cols-2 sm:grid-cols-4 gap-1 border mx-0 w-full",
             isDarkMode
               ? "bg-black/40 border-white/5"
               : "bg-slate-100 border-slate-200"

@@ -1,845 +1,1281 @@
 import * as React from "react";
-import { memo, useState, useMemo } from "react";
+import { useState, useRef, memo } from "react";
 import { 
   format, 
-  startOfMonth, 
-  endOfMonth, 
-  isSameMonth, 
+  isSameDay, 
   parseISO,
-  isSameYear,
-  isSameDay,
-  startOfDay,
-  endOfDay
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  isEqual
 } from "date-fns";
 import { 
+  X, 
+  Calendar as CalendarIcon, 
+  DollarSign, 
+  FileText, 
+  Briefcase, 
+  BookOpen, 
+  Clock, 
   Plus, 
-  Search, 
-  Filter, 
-  TrendingUp, 
-  TrendingDown, 
-  Target, 
-  ChevronDown,
-  X,
+  Minus, 
+  Trash2, 
+  Edit2, 
+  Save,
+  Repeat,
   Wallet,
-  Check,
-  Download,
-  Calendar
+  Receipt
 } from "lucide-react";
-import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { cn, formatCurrency, EXPENSE_COLOR } from "../lib/utils";
-import { CalendarData, Expense, Income, FinanceRecord } from "../types";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, getCategoryIcon, getCategoryColor } from "../constants";
+import { CalendarData, User, Expense, ExpenseTemplate, Income } from "../types";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "../constants";
 
-interface FinanceViewProps {
+interface DayModalProps {
+  date: Date;
+  user: User;
   calendarData: CalendarData;
   updateCalendar: (d: CalendarData) => void;
-  onAddFinanceRecord?: (record: any, type: "expense" | "income") => void;
+  onClose: () => void;
+  onSave: (workDays: any[], expenses: any[], incomes?: any[]) => void;
   primaryColor: string;
   isDarkMode: boolean;
   t: (key: string) => string;
   currentLocale: any;
-  currentMonth: Date;
+  initialTab?: "commitments" | "expenses" | "templates";
 }
 
-export const FinanceView = memo(({ 
+export const DayModal = memo(({ 
+  date, 
+  user, 
   calendarData, 
   updateCalendar, 
-  onAddFinanceRecord,
+  onClose, 
+  onSave, 
   primaryColor, 
   isDarkMode, 
-  t,
-  currentMonth
-}: FinanceViewProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
-  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
-  
-  // State for date filters
-  const [dateFilterType, setDateFilterType] = useState<"month" | "day" | "custom">("month");
-  const [dateFilterDay, setDateFilterDay] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [dateFilterStart, setDateFilterStart] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [dateFilterEnd, setDateFilterEnd] = useState(() => format(endOfMonth(new Date()), "yyyy-MM-dd"));
-  
-  // State for adding new transactions directly from finance view
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  t, 
+  currentLocale,
+  initialTab
+}: DayModalProps) => {
+  const calculateDuration = (start: string, end: string) => {
+    if (!start || !end) return null;
+    const [startH, startM] = start.split(':').map(Number);
+    const [endH, endM] = end.split(':').map(Number);
+    
+    let diff = (endH * 60 + endM) - (startH * 60 + startM);
+    if (diff < 0) diff += 24 * 60;
+    
+    const hours = Math.floor(diff / 60);
+    const minutes = diff % 60;
+    
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  };
+
+  const existingWorkEntry = (calendarData.workDays || []).find((wd: any) => isSameDay(parseISO(wd.date), date) && wd.userId === user.id && (wd.type === 'work' || !wd.type));
+  const existingStudyEntry = (calendarData.workDays || []).find((wd: any) => isSameDay(parseISO(wd.date), date) && wd.userId === user.id && wd.type === 'study');
+  const dayExpenses = (calendarData.expenses || []).filter((e: any) => isSameDay(parseISO(e.date), date));
+  const dayIncomes = (calendarData.incomes || []).filter((i: any) => isSameDay(parseISO(i.date), date));
+
+  const [modalTab, setModalTab] = useState<"commitments" | "expenses" | "templates">(initialTab || "commitments");
+  // Transaction type switcher inside expenses tab
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemValue, setNewItemValue] = useState("");
-  const [newItemDate, setNewItemDate] = useState(() => new Date().toISOString().substring(0, 10));
-  const [newItemCategory, setNewItemCategory] = useState("food");
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  
+  const [isWorkActive, setIsWorkActive] = useState(!!existingWorkEntry);
+  const [workStartTime, setWorkStartTime] = useState(existingWorkEntry?.startTime || "");
+  const [workEndTime, setWorkEndTime] = useState(existingWorkEntry?.endTime || "");
+  const [workHours, setWorkHours] = useState(existingWorkEntry?.hours || "");
+  const [workValue, setWorkValue] = useState(existingWorkEntry?.value?.toString() || "");
+  const [workNotes, setWorkNotes] = useState(existingWorkEntry?.notes || "");
 
-  const allTransactions = useMemo(() => {
-    const list: FinanceRecord[] = [];
-    if (calendarData.registrosFinanceiros) {
-      list.push(...calendarData.registrosFinanceiros);
-    }
-    if (calendarData.expenses) {
-      calendarData.expenses.forEach(e => {
-        list.push({
-          id: e.id,
-          tipo: "gasto",
-          descricao: e.name || "Sem Nome",
-          valor: Math.abs((e.value || 0) * (e.quantity || 1)),
-          categoria: e.category || "outros",
-          data: e.date
-        });
-      });
-    }
-    if (calendarData.incomes) {
-      calendarData.incomes.forEach(i => {
-        list.push({
-          id: i.id,
-          tipo: "receber",
-          descricao: i.name || "Sem Nome",
-          valor: Math.abs(i.value || 0),
-          categoria: i.category || "outros",
-          data: i.date
-        });
-      });
-    }
-    return list;
-  }, [calendarData.registrosFinanceiros, calendarData.expenses, calendarData.incomes]);
+  const [isStudyActive, setIsStudyActive] = useState(!!existingStudyEntry);
+  const [studyStartTime, setStudyStartTime] = useState(existingStudyEntry?.startTime || "");
+  const [studyEndTime, setStudyEndTime] = useState(existingStudyEntry?.endTime || "");
+  const [studyHours, setStudyHours] = useState(existingStudyEntry?.hours || "");
+  const [studyNotes, setStudyNotes] = useState(existingStudyEntry?.notes || "");
 
-  const monthTransactions = useMemo(() => {
-    return allTransactions.filter(r => {
-      const d = parseISO(r.data);
-      return isSameMonth(d, currentMonth) && isSameYear(d, currentMonth);
-    });
-  }, [allTransactions, currentMonth]);
+  const [expenses, setExpenses] = useState<Expense[]>(dayExpenses);
+  const [incomes, setIncomes] = useState<Income[]>(dayIncomes);
 
-  const periodTransactions = useMemo(() => {
-    return allTransactions.filter(r => {
-      const d = parseISO(r.data);
-      if (dateFilterType === "month") {
-        return isSameMonth(d, currentMonth) && isSameYear(d, currentMonth);
-      } else if (dateFilterType === "day") {
-        try {
-          const filterDay = parseISO(dateFilterDay);
-          return isSameDay(d, filterDay);
-        } catch { return true; }
-      } else if (dateFilterType === "custom") {
-        try {
-          const start = startOfDay(parseISO(dateFilterStart));
-          const end = endOfDay(parseISO(dateFilterEnd));
-          return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
-        } catch { return true; }
-      }
-      return true;
-    });
-  }, [allTransactions, currentMonth, dateFilterType, dateFilterDay, dateFilterStart, dateFilterEnd]);
+  const [repeatType, setRepeatType] = useState<"none" | "daily" | "weekdays" | "custom">("none");
+  const [selectedRepeatDays, setSelectedRepeatDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri by default for custom
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    // Use end of today as the boundary for "realized" vs "future"
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-    let realizedWork = 0;
-    let futureWork = 0;
+  const [newExpenseName, setNewExpenseName] = useState("");
+  const [newExpenseValue, setNewExpenseValue] = useState("");
+  const [newExpenseCategory, setNewExpenseCategory] = useState("other");
 
-    (calendarData.workDays || []).forEach(wd => {
-      const d = parseISO(wd.date);
-      let inPeriod = false;
-      if (dateFilterType === "month") {
-        inPeriod = isSameMonth(d, currentMonth) && isSameYear(d, currentMonth);
-      } else if (dateFilterType === "day") {
-        try {
-          const filterDay = parseISO(dateFilterDay);
-          inPeriod = isSameDay(d, filterDay);
-        } catch {}
-      } else if (dateFilterType === "custom") {
-        try {
-           const start = startOfDay(parseISO(dateFilterStart));
-           const end = endOfDay(parseISO(dateFilterEnd));
-           inPeriod = d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
-        } catch {}
-      }
+  const [newIncomeName, setNewIncomeName] = useState("");
+  const [newIncomeValue, setNewIncomeValue] = useState("");
+  const [newIncomeCategory, setNewIncomeCategory] = useState("other_income");
 
-      if (inPeriod) {
-        if (d <= endOfToday) {
-          realizedWork += (wd.value || 0);
-        } else {
-          futureWork += (wd.value || 0);
-        }
-      }
-    });
+  const [isAddingTemplate, setIsAddingTemplate] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [templateItems, setTemplateItems] = useState<{ name: string, value: number, quantity?: number }[]>([]);
+  const [currentItemName, setCurrentItemName] = useState("");
+  const [currentItemValue, setCurrentItemValue] = useState("");
+  const [currentItemQuantity, setCurrentItemQuantity] = useState("1");
 
-    let realizedExtra = 0;
-    let futureExtra = 0;
-    let totalExpenses = 0;
+  const editTemplate = (template: ExpenseTemplate) => {
+    setEditingTemplateId(template.id);
+    setNewTemplateName(template.name);
+    setTemplateItems([...template.items]);
+    setIsAddingTemplate(true);
+  };
 
-    periodTransactions.forEach(r => {
-      if (r.tipo === "gasto") {
-        totalExpenses += r.valor;
-      } else {
-        const d = parseISO(r.data);
-        if (d <= endOfToday) {
-          realizedExtra += r.valor;
-        } else {
-          futureExtra += r.valor;
-        }
-      }
-    });
-    
-    const realizedGross = realizedWork + realizedExtra;
-    const futureGross = futureWork + futureExtra;
-    const currentNet = realizedGross - totalExpenses; // Subtracts the absolute value of expenses
-    const estimatedTotal = currentNet + futureGross;
-    
-    return { 
-      gross: realizedGross + futureGross, // total gross for backward compatibility
-      totalExpenses, 
-      currentNet, 
-      futureGross,
-      estimatedTotal
-    };
-  }, [calendarData.workDays, periodTransactions, currentMonth, dateFilterType, dateFilterDay, dateFilterStart, dateFilterEnd]);
-
-  const filteredTransactions = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    return monthTransactions
-      .filter(r => {
-        const matchesSearch = !normalizedSearch || r.descricao.toLowerCase().includes(normalizedSearch);
-        const matchesCategory = activeCategory === "all" || r.categoria === activeCategory;
-        const matchesType = (transactionType === "expense" && r.tipo === "gasto") || (transactionType === "income" && r.tipo === "receber");
-        return matchesSearch && matchesCategory && matchesType;
-      })
-      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
-  }, [monthTransactions, searchTerm, activeCategory, transactionType]);
-
-  const visibleTransactions = useMemo(() => filteredTransactions.slice(0, 80), [filteredTransactions]);
-
-  const handleSaveTransaction = () => {
-    if (!newItemName) {
-      setFormError("A descrição do registro é obrigatória.");
-      return;
-    }
-    if (!newItemValue) {
-      setFormError("O valor não existe ou é inválido.");
-      return;
-    }
-    
-    const rawDigits = newItemValue.replace(/\D/g, '');
-    const valueNum = rawDigits ? parseInt(rawDigits, 10) / 100 : Number.NaN;
-    if (isNaN(valueNum) || valueNum <= 0) {
-      setFormError("O valor não existe ou é inválido. Informar valor maior que zero.");
-      return;
-    }
-    
-    if (!transactionType) {
-      setFormError("Você deve escolher entre 'Gasto' ou 'A Receber'.");
-      return;
-    }
-    
-    setFormError("");
-
-    let recordDate;
-    if (newItemDate) {
-      recordDate = parseISO(newItemDate);
-      if (isNaN(recordDate.getTime())) recordDate = new Date();
+  const addManualTransaction = () => {
+    if (transactionType === "expense") {
+      const expenseDigits = newExpenseValue.replace(/\D/g, '');
+      const expVal = expenseDigits ? parseInt(expenseDigits, 10) / 100 : Number.NaN;
+      if (!newExpenseName || isNaN(expVal) || expVal <= 0) return;
+      const newExpense: Expense = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newExpenseName,
+        value: expVal,
+        quantity: 1,
+        date: date.toISOString(),
+        category: newExpenseCategory
+      };
+      setExpenses([...expenses, newExpense]);
+      setNewExpenseName("");
+      setNewExpenseValue("");
+      setNewExpenseCategory("other_expense");
     } else {
-      recordDate = new Date();
-      if (!isSameMonth(currentMonth, recordDate) || !isSameYear(currentMonth, recordDate)) {
-        recordDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1, 12, 0, 0);
-      }
+      const incomeDigits = newIncomeValue.replace(/\D/g, '');
+      const incVal = incomeDigits ? parseInt(incomeDigits, 10) / 100 : Number.NaN;
+      if (!newIncomeName || isNaN(incVal) || incVal <= 0) return;
+      const newIncome: Income = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newIncomeName,
+        value: incVal,
+        date: date.toISOString(),
+        userId: user.id,
+        category: newIncomeCategory
+      };
+      setIncomes([...incomes, newIncome]);
+      setNewIncomeName("");
+      setNewIncomeValue("");
+      setNewIncomeCategory("other_income");
     }
+  };
 
-    const newRecord: FinanceRecord = {
+  const applyTemplate = (template: ExpenseTemplate) => {
+    const newExpenses: Expense[] = (template.items || []).map(item => ({
       id: Math.random().toString(36).substr(2, 9),
-      tipo: transactionType === "expense" ? "gasto" : "receber",
-      descricao: newItemName,
-      valor: valueNum,
-      categoria: newItemCategory,
-      data: recordDate.toISOString()
-    };
+      name: item.name,
+      value: item.value,
+      quantity: item.quantity || 1,
+      date: date.toISOString()
+    }));
+    setExpenses([...expenses, ...newExpenses]);
+    setTransactionType("expense");
+    setModalTab("expenses");
+  };
 
-    if (onAddFinanceRecord) {
-      onAddFinanceRecord(newRecord, transactionType);
+  const addTemplateItem = () => {
+    const itemDigits = currentItemValue.replace(/\D/g, '');
+    const itemNum = itemDigits ? parseInt(itemDigits, 10) / 100 : Number.NaN;
+    if (!currentItemName || isNaN(itemNum) || itemNum <= 0) return;
+    setTemplateItems([...templateItems, { 
+      name: currentItemName, 
+      value: itemNum,
+      quantity: parseInt(currentItemQuantity) || 1
+    }]);
+    setCurrentItemName("");
+    setCurrentItemValue("");
+    setCurrentItemQuantity("1");
+  };
+
+  const addTemplate = () => {
+    if (!newTemplateName || templateItems.length === 0) return;
+    
+    if (editingTemplateId) {
+      const updatedTemplates = (calendarData.templates || []).map((t: any) => 
+        t.id === editingTemplateId 
+          ? { ...t, name: newTemplateName, items: templateItems }
+          : t
+      );
+      updateCalendar({
+        ...calendarData,
+        templates: updatedTemplates
+      });
+    } else {
+      const newTemplate: ExpenseTemplate = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newTemplateName,
+        items: templateItems
+      };
+      updateCalendar({
+        ...calendarData,
+        templates: [...(calendarData.templates || []), newTemplate]
+      });
+    }
+    
+    setNewTemplateName("");
+    setTemplateItems([]);
+    setIsAddingTemplate(false);
+    setEditingTemplateId(null);
+  };
+
+  const updateExpenseQuantity = (id: string, delta: number) => {
+    setExpenses(prev => prev.map(e => {
+      if (e.id === id) {
+        const newQty = Math.max(1, (e.quantity || 1) + delta);
+        return { ...e, quantity: newQty };
+      }
+      return e;
+    }));
+  };
+
+  const handleSave = () => {
+    const workDays: any[] = [];
+    
+    // Logic for generating entries based on repeat
+    const datesToApply = [];
+    if (repeatType === "none") {
+      datesToApply.push(date);
+    } else {
+      const monthStart = startOfMonth(date);
+      const monthEnd = endOfMonth(date);
+      const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+      
+      daysInMonth.forEach(d => {
+        if (repeatType === "daily") {
+          datesToApply.push(d);
+        } else if (repeatType === "weekdays") {
+          const dayOfWeek = getDay(d);
+          if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            datesToApply.push(d);
+          }
+        } else if (repeatType === "custom") {
+          const dayOfWeek = getDay(d);
+          if (selectedRepeatDays.includes(dayOfWeek)) {
+            datesToApply.push(d);
+          }
+        }
+      });
     }
 
-    setNewItemName("");
-    setNewItemValue("");
-    setNewItemDate(new Date().toISOString().substring(0, 10));
-    setNewItemCategory(transactionType === "expense" ? "food" : "salary");
-    setIsAddModalOpen(false);
-    
-    setShowFeedback(true);
-    setTimeout(() => setShowFeedback(false), 3000);
+    datesToApply.forEach(d => {
+      const dateStr = d.toISOString();
+      
+      if (isWorkActive) {
+        // If it's the original selected date, try to keep the existing ID
+        const isSelectedDate = isSameDay(d, date);
+        const duration = calculateDuration(workStartTime, workEndTime);
+        
+        const workDigits = workValue.replace(/\D/g, '');
+        const wVal = workDigits ? parseInt(workDigits, 10) / 100 : 0;
+        
+        workDays.push({
+          id: (isSelectedDate && existingWorkEntry?.id) || Math.random().toString(36).substr(2, 9),
+          date: dateStr,
+          userId: user.id,
+          startTime: workStartTime,
+          endTime: workEndTime,
+          hours: duration ? `${workStartTime} - ${workEndTime}` : workHours, // Fallback to manual if no times
+          value: wVal,
+          notes: workNotes,
+          type: 'work'
+        });
+      }
+
+      if (isStudyActive) {
+        const isSelectedDate = isSameDay(d, date);
+        const duration = calculateDuration(studyStartTime, studyEndTime);
+        
+        workDays.push({
+          id: (isSelectedDate && existingStudyEntry?.id) || Math.random().toString(36).substr(2, 9),
+          date: dateStr,
+          userId: user.id,
+          startTime: studyStartTime,
+          endTime: studyEndTime,
+          hours: duration ? `${studyStartTime} - ${studyEndTime}` : studyHours,
+          notes: studyNotes,
+          type: 'study'
+        });
+      }
+    });
+
+    onSave(workDays, expenses, incomes);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Finance Summary Card */}
-      <div className={cn(
-        "rounded-[32px] sm:rounded-[40px] p-5 sm:p-8 border transition-all duration-300 relative overflow-hidden",
-        isDarkMode 
-          ? "bg-black/40 border-white/[0.03] shadow-2xl" 
-          : "bg-white border-slate-200/60 shadow-premium"
-      )}>
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
+    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <motion.div 
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className={cn(
+          "relative w-full max-w-md sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl flex flex-col border transition-colors duration-300 overflow-hidden",
+          isDarkMode ? "bg-black border-white/10" : "bg-white border-slate-200"
+        )}
+        style={{ height: "92svh", maxHeight: "92svh" }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar aba de compromisso"
+          className={cn(
+            "absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border shadow-lg transition-all active:scale-95",
+            isDarkMode
+              ? "border-white/10 bg-white/10 text-slate-100 hover:bg-white/20"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+          )}
+        >
+          <X size={22} strokeWidth={2.5} />
+        </button>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5 sm:mb-6 relative z-30">
-          <div className="space-y-0.5 sm:space-y-1 min-w-0">
-            <h3 className="tech-label tracking-[0.25em]">LÍQUIDO ATUAL</h3>
-            <p className={cn(
-              "text-[2.55rem] leading-none sm:text-5xl font-tech font-bold tracking-tighter transition-all duration-300 break-words",
-              stats.currentNet >= 0 ? (isDarkMode ? "text-emerald-400" : "text-emerald-500") : "text-red-500"
-            )}>
-              {formatCurrency(stats.currentNet)}
-            </p>
-          </div>
-          <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto sm:shrink-0">
-            <div className={cn(
-              "grid grid-cols-3 gap-1 w-full sm:w-auto",
-            )}>
-              <button 
-                onClick={() => setDateFilterType("day")} 
-                className={cn(
-                  "px-2.5 py-2 rounded-lg text-xs font-bold transition-colors text-center", 
-                  dateFilterType === "day" 
-                    ? (isDarkMode ? "bg-white/10 text-slate-100" : "bg-slate-200 text-slate-900") 
-                    : "text-slate-500 hover:text-slate-400 hover:bg-white/5"
-                )}
-              >
-                Dia
-              </button>
-              <button 
-                onClick={() => setDateFilterType("month")} 
-                className={cn(
-                  "px-2.5 py-2 rounded-lg text-xs font-bold transition-colors text-center", 
-                  dateFilterType === "month" 
-                    ? (isDarkMode ? "bg-white/10 text-slate-100" : "bg-slate-200 text-slate-900") 
-                    : "text-slate-500 hover:text-slate-400 hover:bg-white/5"
-                )}
-              >
-                Mês
-              </button>
-              <button 
-                onClick={() => setDateFilterType("custom")} 
-                className={cn(
-                  "px-2.5 py-2 rounded-lg text-xs font-bold transition-colors text-center", 
-                  dateFilterType === "custom" 
-                    ? (isDarkMode ? "bg-white/10 text-slate-100" : "bg-slate-200 text-slate-900") 
-                    : "text-slate-500 hover:text-slate-400 hover:bg-white/5"
-                )}
-              >
-                Pers.
-              </button>
+        <div className="p-4 sm:p-6 pb-2 shrink-0">
+          <div className="flex justify-between items-start gap-4 pr-12 mb-4">
+            <div>
+              <h3 className={cn(
+                "text-[1.65rem] leading-tight sm:text-2xl font-black capitalize pr-1",
+                isDarkMode ? "text-slate-100" : "text-slate-900"
+              )}>
+                {format(date, "EEEE, d", { locale: currentLocale })}
+              </h3>
+              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
+                {format(date, "MMMM yyyy", { locale: currentLocale })}
+              </p>
             </div>
-            
-            {dateFilterType === "day" && (
-               <div className="animate-in fade-in slide-in-from-top-1">
-                 <input 
-                   type="date"
-                   value={dateFilterDay}
-                   onChange={(e) => setDateFilterDay(e.target.value)}
-                   className={cn(
-                     "bg-transparent border-b focus:outline-none focus:border-emerald-500 pb-1 px-1 text-base sm:text-sm font-bold w-full sm:w-[130px] transition-colors", 
-                     isDarkMode ? "border-white/20 text-slate-300" : "border-slate-300 text-slate-700"
-                   )}
-                 />
-               </div>
-            )}
-            
-            {dateFilterType === "custom" && (
-               <div className="grid grid-cols-1 sm:flex sm:flex-row gap-2 sm:items-center animate-in fade-in slide-in-from-top-1 w-full sm:w-auto">
-                 <input 
-                   type="date"
-                   value={dateFilterStart}
-                   onChange={(e) => setDateFilterStart(e.target.value)}
-                   className={cn(
-                     "bg-transparent border-b focus:outline-none focus:border-emerald-500 pb-1 px-1 text-base sm:text-sm font-bold w-full sm:w-[120px] transition-colors", 
-                     isDarkMode ? "border-white/20 text-slate-300" : "border-slate-300 text-slate-700"
-                   )}
-                 />
-                 <span className="text-slate-500 hidden sm:block px-1">-</span>
-                 <input 
-                   type="date"
-                   value={dateFilterEnd}
-                   onChange={(e) => setDateFilterEnd(e.target.value)}
-                   className={cn(
-                     "bg-transparent border-b focus:outline-none focus:border-emerald-500 pb-1 px-1 text-base sm:text-sm font-bold w-full sm:w-[120px] transition-colors", 
-                     isDarkMode ? "border-white/20 text-slate-300" : "border-slate-300 text-slate-700"
-                   )}
-                 />
-               </div>
-            )}
+            <div className="h-10 w-10 shrink-0" aria-hidden="true" />
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 sm:gap-4 relative z-10 mb-3 sm:mb-4">
+          {/* Modal Tabs */}
           <div className={cn(
-            "p-3 sm:p-4 rounded-3xl border transition-all duration-200 group overflow-hidden relative",
-            isDarkMode ? "bg-white/[0.03] border-white/[0.05]" : "bg-slate-50/50 border-slate-200/60"
+            "grid grid-cols-3 items-stretch gap-1 sm:gap-1.5 mb-6 min-h-[52px] w-full p-1.5 rounded-[24px] transition-colors",
+            isDarkMode ? "bg-white/[0.02] border border-white/5" : "bg-slate-100/80 border border-slate-200"
           )}>
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-              <div className="w-5 h-5 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${EXPENSE_COLOR}20` }}>
-                <TrendingDown size={12} style={{ color: EXPENSE_COLOR }} strokeWidth={3} />
-              </div>
-              <span className="tech-label text-[8px] sm:text-[10px] tracking-widest opacity-40">GASTOS</span>
-            </div>
-            <p className={cn("text-xl sm:text-2xl font-tech font-bold break-words", isDarkMode ? "text-white" : "text-slate-900")}>
-              {formatCurrency(stats.totalExpenses)}
-            </p>
-          </div>
-          <div className={cn(
-            "p-3 sm:p-4 rounded-3xl border transition-all duration-200 group overflow-hidden relative",
-            isDarkMode ? "bg-blue-500/10 border-blue-500/20" : "bg-blue-50 border-blue-200"
-          )}>
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-              <div className="w-5 h-5 rounded-lg flex items-center justify-center bg-blue-500/20">
-                <TrendingUp size={12} className="text-blue-600 dark:text-blue-400" strokeWidth={3} />
-              </div>
-              <span className="tech-label text-[8px] sm:text-[10px] tracking-widest text-blue-600 dark:text-blue-400">A RECEBER</span>
-            </div>
-            <p className="text-xl sm:text-2xl font-tech font-bold text-blue-600 dark:text-blue-400 break-words">
-              +{formatCurrency(stats.futureGross)}
-            </p>
-          </div>
-        </div>
-
-        {/* Estimated Total Banner */}
-        <div className={cn(
-          "relative z-10 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border flex flex-col min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between gap-1 transition-all",
-          isDarkMode ? "bg-emerald-500/10 border-emerald-500/20" : "bg-emerald-50 border-emerald-200"
-        )}>
-           <span className="tech-label text-[8px] sm:text-[10px] tracking-widest text-emerald-600 dark:text-emerald-400">TOTAL ESTIMADO</span>
-           <span className="text-base sm:text-xl font-tech font-bold text-emerald-600 dark:text-emerald-400">
-             {formatCurrency(stats.estimatedTotal)}
-           </span>
-        </div>
-      </div>
-
-      {/* Expenses Management */}
-      <div className="space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-3">
-             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-             <h4 className="tech-label tracking-[0.2em]">Detalhamento</h4>
-          </div>
-          <div className="flex items-center gap-2">
-            <motion.button 
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className={cn(
-                "w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all border",
-                isDarkMode ? "bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.05]" : "bg-white border-slate-200 text-slate-500 shadow-soft hover:bg-slate-50"
-              )}
-              title="Baixar Relatório (CSV)"
-              onClick={() => {
-                const lines = [
-                  "Data,Tipo,Categoria,Descricao,Valor",
-                  ...monthTransactions.map(r => `${format(parseISO(r.data), "yyyy-MM-dd")},${r.tipo},${r.categoria},"${r.descricao}",${r.valor}`)
-                ];
-                const blob = new Blob([lines.join('\n')], { type: "text/csv;charset=utf-8" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `relatorio_financeiro_${format(new Date(), "yyyy-MM")}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-            >
-              <Download strokeWidth={2.5} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
-            </motion.button>
-            <motion.button 
-              whileHover={{ scale: 1.1, rotate: 90 }}
-              whileTap={{ scale: 0.9 }}
-              className="relative z-[110] w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 transition-all"
-              onClick={() => setIsAddModalOpen(true)}
-            >
-              <Plus strokeWidth={3} className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
-            </motion.button>
-          </div>
-        </div>
-
-        {/* Local Scope Tab Switcher */}
-        <div className="flex gap-2">
-           <button 
-             onClick={() => { setTransactionType("expense"); setNewItemCategory("food"); }}
-             className={cn("flex-1 py-2 sm:py-3 text-[10px] sm:text-xs uppercase font-black tracking-widest rounded-xl sm:rounded-2xl border transition-all", transactionType === "expense" ? "bg-slate-900 border-slate-900 text-white" : "border-slate-200 text-slate-400 bg-transparent")}
-           >Gastos</button>
-           <button 
-             onClick={() => { setTransactionType("income"); setNewItemCategory("salary"); }}
-             className={cn("flex-1 py-2 sm:py-3 text-[10px] sm:text-xs uppercase font-black tracking-widest rounded-xl sm:rounded-2xl border transition-all", transactionType === "income" ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-slate-400 bg-transparent")}
-           >Receitas</button>
-        </div>
-
-        <div className="pb-6 pt-2">
-          <div className="relative z-50">
-            <button
-              onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
-              className={cn(
-                "flex items-center justify-between w-full px-5 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl border transition-all",
-                isDarkMode ? "bg-white/[0.03] text-slate-300 border-white/[0.05] hover:bg-white/[0.05]" : "bg-white text-slate-600 border-slate-200 shadow-sm hover:bg-slate-50"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Filter size={18} className="opacity-70" />
-                <span className="text-xs sm:text-sm font-black uppercase tracking-widest">
-                  Filtros {activeCategory !== "all" && <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-500 text-white text-[10px]">Ativo</span>}
-                </span>
-              </div>
-              <motion.div
-                animate={{ rotate: isFiltersExpanded ? 180 : 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              >
-                <ChevronDown size={18} className="opacity-50" />
-              </motion.div>
-            </button>
-
-            <AnimatePresence>
-              {isFiltersExpanded && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                  className="absolute left-0 right-0 top-full mt-2 z-50"
+            {[
+              { id: "commitments", label: "COMPROMISSOS", icon: CalendarIcon, color: "#6366f1" },
+              { id: "expenses", label: "FINANÇAS", icon: Receipt, color: "#d946ef" },
+              { id: "templates", label: "TEMPLATES", icon: FileText, color: "#f8fafc" }
+            ].map(tab => {
+              const isActive = modalTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setModalTab(tab.id as any)}
+                  className={cn(
+                    "relative min-w-0 rounded-[18px] flex items-center justify-center gap-1 sm:gap-2 overflow-hidden transition-all duration-300 px-1",
+                    !isActive && (isDarkMode ? "bg-white/[0.02] hover:bg-white/[0.06]" : "bg-white/50 hover:bg-white")
+                  )}
+                  style={{
+                    WebkitTapHighlightColor: "transparent"
+                  }}
                 >
-                  <div className={cn(
-                    "p-3 rounded-xl sm:rounded-2xl border flex flex-col gap-1 shadow-2xl backdrop-blur-xl max-h-[300px] overflow-y-auto no-scrollbar",
-                    isDarkMode ? "bg-slate-900/95 border-white/[0.05]" : "bg-white/95 border-slate-200"
-                  )}>
-                    <button 
-                      onClick={() => { setActiveCategory("all"); setIsFiltersExpanded(false); }}
+                  {isActive && (
+                    <motion.div
+                      layoutId="modalTabActiveBackground"
                       className={cn(
-                        "flex items-center px-4 py-3 rounded-xl text-xs font-tech font-bold uppercase tracking-[0.1em] transition-all border",
-                        activeCategory === "all" 
-                          ? (isDarkMode ? "bg-white text-black border-white shadow-[0_4px_15px_rgba(255,255,255,0.1)]" : "bg-slate-900 text-white border-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.1)]") 
-                          : (isDarkMode ? "bg-transparent text-slate-400 border-transparent hover:bg-white/[0.05]" : "bg-transparent text-slate-500 border-transparent hover:bg-slate-50")
+                        "absolute inset-0 z-0",
+                        isDarkMode 
+                          ? "bg-gradient-to-r from-[#6b21a8] to-[#4338ca] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] border border-white/10"
+                          : "bg-gradient-to-r from-purple-500 to-indigo-500 shadow-md"
+                      )}
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      style={{ borderRadius: 18 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center justify-center">
+                    <Icon size={14} style={{ color: isActive ? "#fff" : tab.color }} className="transition-colors duration-300" />
+                  </span>
+                  <span 
+                    className={cn(
+                      "relative z-10 text-[8px] min-[390px]:text-[9px] sm:text-[10px] font-black uppercase tracking-[0.12em] sm:tracking-widest transition-colors duration-300 truncate",
+                      isActive ? "text-white" : (isDarkMode ? "text-slate-300" : "text-slate-600")
+                    )}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-24" ref={scrollRef} style={{ WebkitOverflowScrolling: "touch" }}> 
+          <AnimatePresence mode="wait">
+            {modalTab === "commitments" ? (
+              <motion.div 
+                key="commitments-tab"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="space-y-6"
+              >
+                {/* Work Section */}
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setIsWorkActive(!isWorkActive)}
+                    className={cn(
+                      "w-full flex items-center justify-between gap-3 p-4 rounded-2xl border transition-all active:scale-[0.99]",
+                      isWorkActive
+                        ? (isDarkMode ? "border-white/10 bg-white/[0.04]" : "border-slate-300 bg-white shadow-sm")
+                        : (isDarkMode ? "bg-[#111111] border-white/[0.04] hover:border-white/[0.08]" : "bg-slate-50 border-slate-100 hover:border-slate-200")
+                    )}
+                    style={isWorkActive ? { borderColor: `${primaryColor}40` } : {}}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all"
+                        style={{ backgroundColor: isWorkActive ? primaryColor : (isDarkMode ? "#1e293b" : "#e2e8f0"), color: isWorkActive ? "white" : (isDarkMode ? "#475569" : "#94a3b8") }}
+                      >
+                        <Briefcase size={18} />
+                      </div>
+                      <div className="text-left min-w-0">
+                        <p className={cn("text-sm font-bold leading-tight truncate", isDarkMode ? "text-slate-200" : "text-slate-800")}>{t('work')}</p>
+                        <p className={cn("text-[10px] font-semibold mt-0.5", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('work_desc')}</p>
+                      </div>
+                    </div>
+                    <div
+                      className={cn("w-11 h-6 rounded-full transition-all relative shrink-0")}
+                      style={{ backgroundColor: isWorkActive ? primaryColor : (isDarkMode ? "#1e293b" : "#e2e8f0") }}
+                    >
+                      <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm", isWorkActive ? "left-6" : "left-1")} />
+                    </div>
+                  </button>
+
+                  {isWorkActive && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className={cn(
+                        "rounded-2xl overflow-hidden border",
+                        isDarkMode ? "bg-[#0d0d0d] border-white/[0.06]" : "bg-white border-slate-200 shadow-sm"
                       )}
                     >
-                      Todos
-                    </button>
-                    {(transactionType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
-                      <button 
-                        key={cat.id}
-                        onClick={() => { setActiveCategory(cat.id); setIsFiltersExpanded(false); }}
-                        className={cn(
-                          "flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-tech font-bold uppercase tracking-[0.1em] transition-all border",
-                          activeCategory === cat.id 
-                            ? (isDarkMode ? "bg-white text-black border-white shadow-[0_4px_15px_rgba(255,255,255,0.1)]" : "bg-slate-900 text-white border-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.1)]") 
-                            : (isDarkMode ? "bg-transparent text-slate-400 border-transparent hover:bg-white/[0.05]" : "bg-transparent text-slate-500 border-transparent hover:bg-slate-50")
+                      {/* Horários */}
+                      <div className={cn("p-4", isDarkMode ? "border-b border-white/[0.05]" : "border-b border-slate-100")}>
+                        <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-3", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('start_time')} / {t('end_time')}</p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={workStartTime}
+                            onChange={e => setWorkStartTime(e.target.value)}
+                            className={cn(
+                              "flex-1 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all text-center",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                          <div className={cn("flex items-center gap-1 px-2", isDarkMode ? "text-slate-600" : "text-slate-300")}>
+                            <div className="w-4 h-px bg-current" />
+                            <Clock size={12} className="opacity-60" />
+                            <div className="w-4 h-px bg-current" />
+                          </div>
+                          <input
+                            type="time"
+                            value={workEndTime}
+                            onChange={e => setWorkEndTime(e.target.value)}
+                            className={cn(
+                              "flex-1 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all text-center",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                        </div>
+                        {calculateDuration(workStartTime, workEndTime) && (
+                          <div className="mt-2 flex justify-center">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
+                              <Clock size={10} />
+                              {calculateDuration(workStartTime, workEndTime)} {t('worked')}
+                            </span>
+                          </div>
                         )}
+                      </div>
+
+                      {/* Horário manual — só aparece se não tem horário automático */}
+                      {!workStartTime && !workEndTime && (
+                        <div className={cn("px-4 py-3", isDarkMode ? "border-b border-white/[0.05]" : "border-b border-slate-100")}>
+                          <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('hours')} (Manual)</p>
+                          <input
+                            type="text"
+                            placeholder="08:00 - 18:00"
+                            value={workHours}
+                            onChange={e => setWorkHours(e.target.value)}
+                            className={cn(
+                              "w-full px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all text-center",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                        </div>
+                      )}
+
+                      {/* Valor */}
+                      <div className={cn("px-4 py-3", isDarkMode ? "border-b border-white/[0.05]" : "border-b border-slate-100")}>
+                        <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('value')}</p>
+                        <div className="relative">
+                          <span className={cn("absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black", isDarkMode ? "text-slate-500" : "text-slate-400")}>R$</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0,00"
+                            value={workValue}
+                            onChange={e => {
+                              const digits = e.target.value.replace(/\D/g, "");
+                              if (!digits) { setWorkValue(""); }
+                              else {
+                                const numericValue = parseInt(digits, 10) / 100;
+                                setWorkValue(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numericValue));
+                              }
+                            }}
+                            className={cn(
+                              "w-full pl-9 pr-4 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Observações */}
+                      <div className="px-4 py-3">
+                        <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('notes')}</p>
+                        <textarea
+                          placeholder={t('notes')}
+                          value={workNotes}
+                          onChange={e => setWorkNotes(e.target.value)}
+                          rows={2}
+                          className={cn(
+                            "w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none border transition-all resize-none",
+                            isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20 placeholder:text-slate-600" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300 placeholder:text-slate-400"
+                          )}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Study Section */}
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setIsStudyActive(!isStudyActive)}
+                    className={cn(
+                      "w-full flex items-center justify-between gap-3 p-4 rounded-2xl border transition-all active:scale-[0.99]",
+                      isStudyActive
+                        ? (isDarkMode ? "border-white/10 bg-white/[0.04]" : "border-slate-300 bg-white shadow-sm")
+                        : (isDarkMode ? "bg-[#111111] border-white/[0.04] hover:border-white/[0.08]" : "bg-slate-50 border-slate-100 hover:border-slate-200")
+                    )}
+                    style={isStudyActive ? { borderColor: `${primaryColor}40` } : {}}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
+                        style={{ backgroundColor: isStudyActive ? primaryColor : (isDarkMode ? "#1e293b" : "#e2e8f0"), color: isStudyActive ? "white" : (isDarkMode ? "#475569" : "#94a3b8") }}
                       >
-                        <cat.icon strokeWidth={3} style={{ color: activeCategory === cat.id ? undefined : cat.color }} className="w-4 h-4" />
-                        {cat.name}
+                        <BookOpen size={18} />
+                      </div>
+                      <div className="text-left min-w-0">
+                        <p className={cn("text-sm font-bold leading-tight", isDarkMode ? "text-slate-200" : "text-slate-800")}>{t('study')}</p>
+                        <p className={cn("text-[10px] font-semibold mt-0.5", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('study_desc')}</p>
+                      </div>
+                    </div>
+                    <div
+                      className={cn("w-11 h-6 rounded-full transition-all relative shrink-0")}
+                      style={{ backgroundColor: isStudyActive ? primaryColor : (isDarkMode ? "#1e293b" : "#e2e8f0") }}
+                    >
+                      <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm", isStudyActive ? "left-6" : "left-1")} />
+                    </div>
+                  </button>
+
+                  {isStudyActive && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className={cn(
+                        "rounded-2xl overflow-hidden border",
+                        isDarkMode ? "bg-[#0d0d0d] border-white/[0.06]" : "bg-white border-slate-200 shadow-sm"
+                      )}
+                    >
+                      {/* Horários */}
+                      <div className={cn("p-4", isDarkMode ? "border-b border-white/[0.05]" : "border-b border-slate-100")}>
+                        <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-3", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('start_time')} / {t('end_time')}</p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={studyStartTime}
+                            onChange={e => setStudyStartTime(e.target.value)}
+                            className={cn(
+                              "flex-1 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all text-center",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                          <div className={cn("flex items-center gap-1 px-2", isDarkMode ? "text-slate-600" : "text-slate-300")}>
+                            <div className="w-4 h-px bg-current" />
+                            <Clock size={12} className="opacity-60" />
+                            <div className="w-4 h-px bg-current" />
+                          </div>
+                          <input
+                            type="time"
+                            value={studyEndTime}
+                            onChange={e => setStudyEndTime(e.target.value)}
+                            className={cn(
+                              "flex-1 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all text-center",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                        </div>
+                        {calculateDuration(studyStartTime, studyEndTime) && (
+                          <div className="mt-2 flex justify-center">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
+                              <Clock size={10} />
+                              {calculateDuration(studyStartTime, studyEndTime)} {t('studied')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Horário manual */}
+                      {!studyStartTime && !studyEndTime && (
+                        <div className={cn("px-4 py-3", isDarkMode ? "border-b border-white/[0.05]" : "border-b border-slate-100")}>
+                          <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('hours')} (Manual)</p>
+                          <input
+                            type="text"
+                            placeholder="19:00 - 21:00"
+                            value={studyHours}
+                            onChange={e => setStudyHours(e.target.value)}
+                            className={cn(
+                              "w-full px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none border transition-all text-center",
+                              isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300"
+                            )}
+                          />
+                        </div>
+                      )}
+
+                      {/* Observações */}
+                      <div className="px-4 py-3">
+                        <p className={cn("text-[9px] font-black uppercase tracking-[0.18em] mb-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('notes')}</p>
+                        <textarea
+                          placeholder={t('notes')}
+                          value={studyNotes}
+                          onChange={e => setStudyNotes(e.target.value)}
+                          rows={2}
+                          className={cn(
+                            "w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none border transition-all resize-none",
+                            isDarkMode ? "bg-white/[0.04] border-white/[0.08] text-slate-100 focus:border-white/20 placeholder:text-slate-600" : "bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-300 placeholder:text-slate-400"
+                          )}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Repeat Section */}
+                <div className={cn(
+                  "rounded-2xl border overflow-hidden",
+                  isDarkMode ? "bg-[#0d0d0d] border-white/[0.06]" : "bg-white border-slate-200 shadow-sm"
+                )}>
+                  <div className={cn("flex items-center gap-3 px-4 py-3", isDarkMode ? "border-b border-white/[0.05]" : "border-b border-slate-100")}>
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
+                      <Repeat size={14} />
+                    </div>
+                    <p className={cn("text-[9px] font-black uppercase tracking-[0.18em]", isDarkMode ? "text-slate-500" : "text-slate-400")}>{t('repeat')}</p>
+                  </div>
+
+                  <div className="p-3 grid grid-cols-4 gap-2">
+                    {(['none', 'daily', 'weekdays', 'custom'] as const).map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setRepeatType(type)}
+                        className={cn(
+                          "py-2.5 px-2 rounded-xl border text-[9px] font-black uppercase tracking-wide transition-all",
+                          repeatType === type
+                            ? "text-white border-transparent"
+                            : (isDarkMode ? "bg-transparent border-white/[0.06] text-slate-500 hover:border-white/10" : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300")
+                        )}
+                        style={repeatType === type ? { backgroundColor: primaryColor } : {}}
+                      >
+                        {t(type === 'daily' ? 'every_day' : type)}
                       </button>
                     ))}
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
 
-            <div className="space-y-4">
-              {filteredTransactions.length === 0 ? (
-                <div className={cn(
-                  "p-12 rounded-[40px] border border-dashed text-center space-y-4",
-                  isDarkMode ? "bg-white/[0.02] border-white/[0.05]" : "bg-slate-50/50 border-slate-200/60"
-                )}>
-                  <div className="w-16 h-16 rounded-full bg-slate-500/5 flex items-center justify-center mx-auto">
-                    <Search className="text-slate-300" size={32} />
-                  </div>
-                  <p className="tech-label opacity-40">Nenhum registro encontrado</p>
+                  {repeatType === 'custom' && (
+                    <div className={cn("px-3 pb-3 flex justify-between gap-1.5", isDarkMode ? "" : "")}>
+                      {[
+                        { id: 1, label: 'mon' },
+                        { id: 2, label: 'tue' },
+                        { id: 3, label: 'wed' },
+                        { id: 4, label: 'thu' },
+                        { id: 5, label: 'fri' },
+                        { id: 6, label: 'sat' },
+                        { id: 0, label: 'sun' }
+                      ].map((day) => (
+                        <button
+                          key={day.id}
+                          onClick={() => {
+                            if (selectedRepeatDays.includes(day.id)) {
+                              setSelectedRepeatDays(selectedRepeatDays.filter(d => d !== day.id));
+                            } else {
+                              setSelectedRepeatDays([...selectedRepeatDays, day.id]);
+                            }
+                          }}
+                          className={cn(
+                            "flex-1 py-2.5 rounded-xl border text-[9px] font-black transition-all",
+                            selectedRepeatDays.includes(day.id)
+                              ? "text-white border-transparent"
+                              : (isDarkMode ? "bg-transparent border-white/[0.06] text-slate-500" : "bg-slate-50 border-slate-200 text-slate-400")
+                          )}
+                          style={selectedRepeatDays.includes(day.id) ? { backgroundColor: primaryColor } : {}}
+                        >
+                          {t(day.label)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                visibleTransactions.map((r) => {
-                  const isIncome = r.tipo === "receber";
-                  const Icon = getCategoryIcon(r.categoria, isIncome);
-                  const color = getCategoryColor(r.categoria, isIncome);
-                  return (
-                    <div
-                      key={r.id}
-                      onClick={() => setSelectedRecordId(r.id)}
-                      className={cn(
-                        "p-4 rounded-3xl border transition-all duration-300 flex items-center justify-between gap-3 group cursor-pointer",
-                        isDarkMode ? "bg-white/[0.02] border-white/[0.04] hover:bg-white/[0.08]" : "bg-white border-slate-200/50 shadow-soft hover:shadow-premium"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-10 h-10 rounded-2xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 border"
-                        )} style={{ 
-                          backgroundColor: `${color}15`, 
-                          color: color, 
-                          borderColor: isDarkMode ? `${color}30` : `${color}20` 
-                        }}>
-                          <Icon size={18} strokeWidth={2.5} />
-                        </div>
-                        <div>
-                          <h4 className={cn("text-xs sm:text-sm font-display font-black", isDarkMode ? "text-slate-100" : "text-slate-900")}>{r.descricao}</h4>
-                          <div className="flex items-center gap-2 mt-0.5">
-                             <p className="tech-label text-[8px] sm:text-[10px] tracking-widest lowercase opacity-40">{format(parseISO(r.data), "dd MMM")}</p>
+
+                {/* Save button for commitments tab */}
+                <button
+                  onClick={handleSave}
+                  className="w-full text-white font-black py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm tracking-wide"
+                  style={{ backgroundColor: primaryColor, boxShadow: `0 8px 24px -6px ${primaryColor}55` }}
+                >
+                  <Save size={16} strokeWidth={2.5} />
+                  {t('save')}
+                </button>
+              </motion.div>
+            ) : modalTab === "expenses" ? (
+              <motion.div 
+                key="expenses-tab"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="space-y-6"
+              >
+                {/* Transaction Type Toggler */}
+                <div className="flex gap-2 p-1 rounded-2xl bg-slate-500/5 mb-4">
+                  <button 
+                    onClick={() => setTransactionType("expense")}
+                    className={cn(
+                      "flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all",
+                      transactionType === "expense" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                    )}
+                  >Gasto
+                  </button>
+                  <button 
+                    onClick={() => setTransactionType("income")}
+                    className={cn(
+                      "flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all",
+                      transactionType === "income" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500"
+                    )}
+                  >A Receber
+                  </button>
+                </div>
+
+                {transactionType === "expense" ? (
+                  <>
+                    {/* Add Manual Expense */}
+                    <div className="space-y-4">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('add_expense')}</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input 
+                          type="text" 
+                          placeholder={t('name')} 
+                          value={newExpenseName}
+                          onChange={e => setNewExpenseName(e.target.value)}
+                          className={cn(
+                            "px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all",
+                            isDarkMode ? "bg-black border-white/10 text-slate-100" : "bg-slate-50 border-slate-200 text-slate-900"
+                          )}
+                          style={{ "--tw-ring-color": primaryColor } as any}
+                        />
+                        <input 
+                          type="text" 
+                          inputMode="numeric"
+                          placeholder="R$ 0,00" 
+                          value={newExpenseValue}
+                          onChange={e => {
+                            const digits = e.target.value.replace(/\D/g, "");
+                            if (!digits) {
+                              setNewExpenseValue("");
+                            } else {
+                              const numericValue = parseInt(digits, 10) / 100;
+                              setNewExpenseValue(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numericValue));
+                            }
+                          }}
+                          className={cn(
+                            "px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all",
+                            isDarkMode ? "bg-black border-white/10 text-slate-100" : "bg-slate-50 border-slate-200 text-slate-900"
+                          )}
+                          style={{ "--tw-ring-color": primaryColor } as any}
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-6 gap-2">
+                        {EXPENSE_CATEGORIES.map(cat => {
+                          const Icon = cat.icon;
+                          return (
+                            <button
+                              key={cat.id}
+                              onClick={() => setNewExpenseCategory(cat.id)}
+                              className={cn(
+                                "flex flex-col items-center justify-center p-2 rounded-xl border transition-all",
+                                newExpenseCategory === cat.id 
+                                  ? (isDarkMode ? "bg-white/10 border-white/20" : "bg-slate-100 border-slate-300")
+                                  : (isDarkMode ? "bg-transparent border-white/5" : "bg-white border-slate-100")
+                              )}
+                              title={cat.name}
+                            >
+                              <Icon size={14} className={newExpenseCategory === cat.id ? "" : "text-slate-400"} style={newExpenseCategory === cat.id ? { color: EXPENSE_COLOR } : {}} />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button 
+                        onClick={addManualTransaction}
+                        className="w-full py-3 text-white rounded-xl transition-all font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 shadow-lg"
+                        style={{ backgroundColor: EXPENSE_COLOR, boxShadow: `0 4px 12px ${EXPENSE_COLOR}44` }}
+                      >
+                        <Plus size={16} />
+                        {t('add_expense')}
+                      </button>
+                    </div>
+
+                    {/* List of Day Expenses */}
+                    <div className={cn(
+                      "space-y-3 pt-4 border-t",
+                      isDarkMode ? "border-white/5" : "border-slate-100"
+                    )}>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('day_expenses')}</label>
+                      <div className="space-y-2">
+                        {expenses.length === 0 ? (
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest text-center py-4">{t('no_expenses')}</p>
+                        ) : (
+                          expenses.map(e => (
+                            <div key={e.id} className={cn(
+                              "p-3 rounded-xl border space-y-2",
+                              isDarkMode ? "bg-[#111111] border-white/5" : "bg-slate-50 border-slate-100"
+                            )}>
+                              <div className="flex items-center justify-between">
+                                <span className={cn(
+                                  "text-xs font-bold",
+                                  isDarkMode ? "text-slate-200" : "text-slate-700"
+                                )}>{e.name}</span>
+                                <button 
+                                  onClick={() => setExpenses(expenses.filter(ex => ex.id !== e.id))}
+                                  className="text-slate-400 hover:text-red-500 transition-colors"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className={cn(
+                                  "flex items-center border rounded-lg p-1",
+                                  isDarkMode ? "bg-black border-white/10" : "bg-white border-slate-200"
+                                )}>
+                                  <button 
+                                    onClick={() => updateExpenseQuantity(e.id, -1)}
+                                    className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors"
+                                  >
+                                    <Minus size={12} />
+                                  </button>
+                                  <span className={cn(
+                                    "w-8 text-center text-xs font-black",
+                                    isDarkMode ? "text-slate-100" : "text-slate-900"
+                                  )}>{e.quantity || 1}</span>
+                                  <button 
+                                    onClick={() => updateExpenseQuantity(e.id, 1)}
+                                    className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors"
+                              >
+                                <Plus size={12} />
+                              </button>
+                            </div>
+                            <span className="text-xs font-black" style={{ color: EXPENSE_COLOR }}>
+                              {formatCurrency((e.value || 0) * (e.quantity || 1))}
+                            </span>
                           </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={cn("text-base sm:text-lg font-tech font-bold", isIncome ? "text-emerald-500" : "text-rose-500")}>
-                          {isIncome ? "+" : "-"}{formatCurrency(Math.abs(r.valor))}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              {filteredTransactions.length > visibleTransactions.length && (
-                <div className={cn(
-                  "px-4 py-3 rounded-2xl border text-center text-[11px] font-bold opacity-70",
-                  isDarkMode ? "bg-white/[0.02] border-white/[0.04]" : "bg-white border-slate-200/50"
-                )}>
-                  Mostrando os 80 registros mais recentes. Use os filtros para encontrar registros antigos.
-                </div>
-              )}
-            </div>
-      </div>
-
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {selectedRecordId && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[10000] flex items-end justify-center sm:items-center p-4 bg-black/60 backdrop-blur-sm"
-            onPointerDownCapture={(e) => e.stopPropagation()}
-            style={{ touchAction: "auto" }}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className={cn(
-                "w-[95%] sm:w-[90%] max-w-sm mb-8 sm:mb-10 rounded-[32px] p-6 sm:p-8 border shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar",
-                isDarkMode ? "bg-[#111111] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"
-              )}
-            >
-              <button 
-                onClick={() => setSelectedRecordId(null)}
-                className="absolute top-4 right-4 w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-slate-500/10 text-slate-500 hover:bg-slate-500/20 z-10 backdrop-blur-md"
-              >
-                <X size={18} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
-              </button>
-              
-              {(() => {
-                const record = allTransactions.find(r => r.id === selectedRecordId);
-                if (!record) return <p>Registro não encontrado.</p>;
-                
-                const isIncome = record.tipo === "receber";
-                const Icon = getCategoryIcon(record.categoria, isIncome);
-                const color = getCategoryColor(record.categoria, isIncome);
-
-                return (
-                  <div className="space-y-4 sm:space-y-6 pt-2">
-                    <div className="flex flex-col items-center justify-center text-center space-y-3 sm:space-y-4">
-                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl flex items-center justify-center border-2" style={{ 
-                        backgroundColor: `${color}15`, 
-                        color: color, 
-                        borderColor: isDarkMode ? `${color}30` : `${color}20` 
-                      }}>
-                        <Icon strokeWidth={2} className="w-8 h-8 sm:w-9 sm:h-9" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl sm:text-2xl font-display font-black pr-6 pl-6">{record.descricao}</h2>
-                        <span className="tech-label text-[10px] sm:text-xs opacity-40 uppercase inline-block mt-2">
-                          {record.tipo === "gasto" ? "Gasto" : "A Receber"} • {record.categoria}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className={cn("p-4 sm:p-6 rounded-3xl border flex items-center justify-center", isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200")}>
-                      <span className={cn(
-                        "text-3xl sm:text-4xl font-tech font-bold",
-                        isIncome ? "text-emerald-500" : "text-rose-500"
-                      )}>
-                        {isIncome ? "+" : "-"}{formatCurrency(record.valor)}
-                      </span>
-                    </div>
-                    
-                    <div className="pt-2 text-center sm:text-left">
-                      <p className="tech-label text-[10px] opacity-40 mb-1">Data do Registro</p>
-                      <p className="text-sm sm:text-base font-semibold">{format(parseISO(record.data), "dd/MM/yyyy • HH:mm")}</p>
-                    </div>
+                      ))
+                    )}
                   </div>
-                );
-              })()}
-            </motion.div>
-          </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {isAddModalOpen && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[10000] flex items-end justify-center sm:items-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm box-border"
-            onPointerDownCapture={(e) => e.stopPropagation()}
-            style={{ touchAction: "auto" }}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className={cn(
-                "w-[95%] sm:w-full max-w-[500px] rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 pb-6 sm:pb-10 border shadow-2xl relative max-h-[92vh] overflow-y-auto box-border no-scrollbar",
-                isDarkMode ? "bg-[#090909] border-white/5" : "bg-white border-slate-200"
-              )}
-            >
-              <button 
-                onClick={() => setIsAddModalOpen(false)}
-                className="absolute right-4 top-4 sm:right-6 sm:top-6 w-10 h-10 rounded-full flex items-center justify-center bg-slate-500/10 text-slate-400 hover:bg-slate-500/20 z-10 transition-all"
+                  {expenses.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        setTemplateItems(expenses.map(e => ({ name: e.name, value: e.value, quantity: e.quantity })));
+                        setIsAddingTemplate(true);
+                        setModalTab("templates");
+                      }}
+                      className="w-full py-3 border border-dashed rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all mt-4"
+                      style={{ borderColor: `${primaryColor}40` }}
+                    >
+                      {t('save_as_template')}
+                    </button>
+                  )}
+                </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Adicionar a Receber</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input 
+                          type="text" 
+                          placeholder={t('name')} 
+                          value={newIncomeName}
+                          onChange={e => setNewIncomeName(e.target.value)}
+                          className={cn(
+                            "px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all",
+                            isDarkMode ? "bg-black border-white/10 text-slate-100" : "bg-emerald-50 border-emerald-100/50 text-slate-900"
+                          )}
+                          style={{ "--tw-ring-color": '#10b981' } as any}
+                        />
+                        <input 
+                          type="text" 
+                          inputMode="numeric"
+                          placeholder="R$ 0,00" 
+                          value={newIncomeValue}
+                          onChange={e => {
+                            const digits = e.target.value.replace(/\D/g, "");
+                            if (!digits) {
+                              setNewIncomeValue("");
+                            } else {
+                              const numericValue = parseInt(digits, 10) / 100;
+                              setNewIncomeValue(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numericValue));
+                            }
+                          }}
+                          className={cn(
+                            "px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all",
+                            isDarkMode ? "bg-black border-white/10 text-slate-100" : "bg-emerald-50 border-emerald-100/50 text-slate-900"
+                          )}
+                          style={{ "--tw-ring-color": '#10b981' } as any}
+                        />
+                      </div>
+                      <div className="grid grid-cols-6 gap-2">
+                        {INCOME_CATEGORIES.map(cat => {
+                          const Icon = cat.icon;
+                          return (
+                            <button
+                              key={cat.id}
+                              onClick={() => setNewIncomeCategory(cat.id)}
+                              className={cn(
+                                "flex flex-col items-center justify-center p-2 rounded-xl border transition-all",
+                                newIncomeCategory === cat.id 
+                                  ? (isDarkMode ? "bg-white/10 border-white/20" : "bg-emerald-100 border-emerald-300")
+                                  : (isDarkMode ? "bg-transparent border-white/5" : "bg-white border-slate-100")
+                              )}
+                              title={cat.name}
+                            >
+                              <Icon size={14} className={newIncomeCategory === cat.id ? "" : "text-slate-400"} style={newIncomeCategory === cat.id ? { color: '#10b981' } : {}} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      <button 
+                        onClick={addManualTransaction}
+                        className="w-full py-3 text-white rounded-xl transition-all font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 shadow-lg"
+                        style={{ backgroundColor: '#10b981', boxShadow: `0 4px 12px #10b98144` }}
+                      >
+                        <Plus size={16} />
+                        Adicionar
+                      </button>
+                    </div>
+
+                    {/* List of Day Incomes */}
+                    <div className={cn(
+                      "space-y-3 pt-4 border-t",
+                      isDarkMode ? "border-white/5" : "border-slate-100"
+                    )}>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Valores a Receber</label>
+                      <div className="space-y-2">
+                        {incomes.length === 0 ? (
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest text-center py-4">Nenhum valor extra hoje</p>
+                        ) : (
+                          incomes.map(income => (
+                            <div key={income.id} className={cn(
+                              "p-3 rounded-xl border flex items-center justify-between",
+                              isDarkMode ? "bg-[#111111] border-white/5" : "bg-slate-50 border-slate-100"
+                            )}>
+                              <div className="flex flex-col">
+                                <span className={cn(
+                                  "text-xs font-bold",
+                                  isDarkMode ? "text-slate-200" : "text-slate-700"
+                                )}>{income.name}</span>
+                                <span className="text-[10px] font-black text-emerald-500 mt-0.5">
+                                  +{formatCurrency(income.value)}
+                                </span>
+                              </div>
+                              <button 
+                                onClick={() => setIncomes(incomes.filter(i => i.id !== income.id))}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Save button for expenses tab */}
+                <button
+                  onClick={handleSave}
+                  className="w-full text-white font-black py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm tracking-wide"
+                  style={{ backgroundColor: primaryColor, boxShadow: `0 8px 24px -6px ${primaryColor}55` }}
+                >
+                  <Save size={16} strokeWidth={2.5} />
+                  {t('save')}
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="templates-tab"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="space-y-6"
               >
-                <X size={20} />
-              </button>
-              
-              <h3 className={cn("text-xl sm:text-2xl font-display font-black mb-5 mt-1 sm:mt-0", isDarkMode ? "text-white" : "text-slate-900")}>Novo Registro</h3>
-              
-              <div className="space-y-6">
-                <div className="flex gap-2 p-1.5 rounded-[22px] bg-white/5 box-border">
-                  <button 
-                    onClick={() => { setTransactionType("expense"); setNewItemCategory("food"); }}
-                    className={cn(
-                      "flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-[18px] transition-all",
-                      transactionType === "expense" ? "bg-white text-black shadow-lg" : "text-slate-500"
-                    )}
-                  >GASTO
-                  </button>
-                  <button 
-                    onClick={() => { setTransactionType("income"); setNewItemCategory("salary"); }}
-                    className={cn(
-                      "flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-[18px] transition-all",
-                      transactionType === "income" ? "bg-white text-emerald-600 shadow-lg" : "text-slate-500"
-                    )}
-                  >A RECEBER
-                  </button>
-                </div>
-                
-                <div className="w-full box-border">
-                  <label className="block text-[11px] uppercase font-black text-slate-500 mb-2.5 ml-1">Descrição</label>
-                  <input 
-                    type="text" 
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="Ex: Assinatura, Venda..."
-                    className={cn(
-                      "w-full px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all outline-none box-border text-[16px] sm:text-[15px] font-medium",
-                      isDarkMode ? "bg-black border-white/10 text-white focus:border-white/20 placeholder:text-slate-700" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner focus:border-blue-500/50 focus:bg-white"
-                    )}
-                  />
-                </div>
-                
-                <div className="flex gap-4">
-                  <div className="w-1/2 box-border">
-                    <label className="block text-[11px] uppercase font-black text-slate-500 mb-2.5 ml-1">Valor (R$)</label>
-                    <input 
-                      type="text" 
-                      inputMode="numeric"
-                      value={newItemValue}
-                      onChange={(e) => {
-                        const digits = e.target.value.replace(/\D/g, "");
-                        if (!digits) {
-                          setNewItemValue("");
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('saved_templates')}</label>
+                    <button 
+                      onClick={() => {
+                        if (isAddingTemplate) {
+                          setIsAddingTemplate(false);
+                          setEditingTemplateId(null);
+                          setNewTemplateName("");
+                          setTemplateItems([]);
                         } else {
-                          const numericValue = parseInt(digits, 10) / 100;
-                          setNewItemValue(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numericValue));
+                          setIsAddingTemplate(true);
                         }
                       }}
-                      placeholder="R$ 0,00"
-                      className={cn(
-                        "w-full px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all outline-none box-border text-[16px] sm:text-[15px] font-medium",
-                        isDarkMode ? "bg-black border-white/10 text-white focus:border-white/20 placeholder:text-slate-700" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner focus:border-blue-500/50 focus:bg-white"
-                      )}
-                    />
+                      className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl transition-all flex items-center gap-2"
+                      style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}
+                    >
+                      {isAddingTemplate ? <X size={12} /> : <Plus size={12} />}
+                      {isAddingTemplate ? t('cancel') : t('new_template')}
+                    </button>
                   </div>
-                  
-                  <div className="w-1/2 box-border">
-                    <label className="block text-[11px] uppercase font-black text-slate-500 mb-2.5 ml-1">Data</label>
-                    <input 
-                      type="date" 
-                      value={newItemDate}
-                      onChange={(e) => setNewItemDate(e.target.value)}
-                      className={cn(
-                        "w-full px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all outline-none box-border text-[16px] sm:text-[15px] font-medium",
-                        isDarkMode ? "bg-black border-white/10 text-white focus:border-white/20 placeholder:text-slate-700 [color-scheme:dark]" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner focus:border-blue-500/50 focus:bg-white"
-                      )}
-                    />
+
+                  {isAddingTemplate && (
+                    <div className={cn(
+                      "p-4 rounded-2xl border space-y-4",
+                      isDarkMode ? "bg-[#111111] border-white/5" : "bg-white border-slate-200"
+                    )}>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('name')}</label>
+                        <input 
+                          type="text" 
+                          placeholder={t('name')} 
+                          value={newTemplateName}
+                          onChange={e => setNewTemplateName(e.target.value)}
+                          className={cn(
+                            "w-full px-3 py-2.5 border rounded-xl text-sm font-bold focus:outline-none focus:ring-2 transition-all",
+                            isDarkMode ? "bg-black border-white/10 text-slate-100" : "bg-slate-50 border-slate-200 text-slate-900"
+                          )}
+                          style={{ "--tw-ring-color": primaryColor } as any}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('add')}</label>
+                        <div className="grid grid-cols-12 gap-2">
+                          <div className="col-span-5">
+                            <input 
+                              type="text" 
+                              placeholder={t('name')} 
+                              value={currentItemName}
+                              onChange={e => setCurrentItemName(e.target.value)}
+                              className={cn(
+                                "w-full px-3 py-2 border rounded-xl text-xs font-bold focus:outline-none h-11",
+                                isDarkMode ? "bg-black border-white/10 text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-900"
+                              )}
+                            />
+                          </div>
+                          <div className="col-span-3">
+                            <input 
+                              type="text" 
+                              inputMode="numeric"
+                              placeholder="R$ 0,00" 
+                              value={currentItemValue}
+                              onChange={e => {
+                                const digits = e.target.value.replace(/\D/g, "");
+                                if (!digits) {
+                                  setCurrentItemValue("");
+                                } else {
+                                  const numericValue = parseInt(digits, 10) / 100;
+                                  setCurrentItemValue(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numericValue));
+                                }
+                              }}
+                              className={cn(
+                                "w-full px-2 py-2 border rounded-xl text-xs font-bold focus:outline-none text-center h-11",
+                                isDarkMode ? "bg-black border-white/10 text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-900"
+                              )}
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <input 
+                              type="number" 
+                              placeholder="Qtd" 
+                              value={currentItemQuantity}
+                              onChange={e => setCurrentItemQuantity(e.target.value)}
+                              className={cn(
+                                "w-full px-2 py-2 border rounded-xl text-xs font-bold focus:outline-none text-center h-11",
+                                isDarkMode ? "bg-black border-white/10 text-slate-100 focus:border-white/20" : "bg-slate-50 border-slate-200 text-slate-900"
+                              )}
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <button 
+                              onClick={addTemplateItem}
+                              className="w-full h-11 flex items-center justify-center text-white rounded-xl transition-all hover:bg-opacity-90 active:scale-95 shadow-sm"
+                              style={{ backgroundColor: primaryColor }}
+                            >
+                              <Plus size={20} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {templateItems.length > 0 && (
+                          <div className="space-y-2 pt-2">
+                            {templateItems.map((item, idx) => (
+                              <div key={idx} className={cn(
+                                "flex justify-between items-center p-2 rounded-lg border",
+                                isDarkMode ? "bg-black/40 border-white/5" : "bg-white border-slate-100"
+                              )}>
+                                <div className="flex flex-col">
+                                  <span className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>{item.name}</span>
+                                  <span className="text-[9px] text-slate-400">{item.quantity}x {formatCurrency(item.value)}</span>
+                                </div>
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className="text-[11px] font-black text-red-400">-{formatCurrency(item.value * (item.quantity || 1))}</span>
+                                  <button 
+                                    onClick={() => setTemplateItems(templateItems.filter((_, i) => i !== idx))}
+                                    className="text-slate-400 hover:text-red-500 transition-colors"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <button 
+                        onClick={addTemplate}
+                        disabled={!newTemplateName || templateItems.length === 0}
+                        className="w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        {editingTemplateId ? t('save') : t('save')}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3">
+                    {(calendarData.templates || []).length === 0 ? (
+                      <div className={cn(
+                        "p-8 rounded-2xl border border-dashed text-center space-y-2",
+                        isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"
+                      )}>
+                        <FileText className="mx-auto text-slate-400" size={24} />
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('no_templates')}</p>
+                      </div>
+                    ) : (
+                      (calendarData.templates || []).map(t => (
+                        <div key={t.id} className={cn(
+                          "p-4 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer group",
+                          isDarkMode ? "bg-[#111111] border-white/5 hover:border-white/10" : "bg-white border-slate-200 hover:border-slate-300"
+                        )}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
+                                <FileText size={16} />
+                              </div>
+                              <div>
+                                <h4 className={cn("text-sm font-bold", isDarkMode ? "text-slate-100" : "text-slate-900")}>{t.name}</h4>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{t.items.length} itens</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  editTemplate(t);
+                                }}
+                                className="text-slate-400 hover:text-blue-500 transition-colors"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateCalendar({
+                                    ...calendarData,
+                                    templates: (calendarData.templates || []).filter(temp => temp.id !== t.id)
+                                  });
+                                }}
+                                className="text-slate-400 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {t.items.slice(0, 3).map((item, idx) => (
+                              <span key={idx} className={cn(
+                                "px-2 py-1 rounded-lg text-[9px] font-bold",
+                                isDarkMode ? "bg-white/5 text-slate-400" : "bg-slate-100 text-slate-500"
+                              )}>
+                                {item.name} {item.quantity && item.quantity > 1 ? `(${item.quantity}x)` : ''}
+                              </span>
+                            ))}
+                            {t.items.length > 3 && (
+                              <span className={cn(
+                                "px-2 py-1 rounded-lg text-[9px] font-bold",
+                                isDarkMode ? "bg-white/5 text-slate-400" : "bg-slate-100 text-slate-500"
+                              )}>
+                                +{t.items.length - 3}
+                              </span>
+                            )}
+                          </div>
+                          <button 
+                            onClick={() => applyTemplate(t)}
+                            className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all"
+                            style={{ backgroundColor: primaryColor }}
+                          >
+                            Aplicar Template
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
-                <div className="w-full box-border">
-                  <label className="block text-[11px] uppercase font-black text-slate-500 mb-3 ml-1">Categoria</label>
-                  <div className="grid grid-cols-4 gap-2 sm:gap-2.5 w-full">
-                     {(transactionType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => {
-                       const isSelected = newItemCategory === cat.id;
-                       return (
-                         <button 
-                           key={cat.id}
-                           onClick={() => setNewItemCategory(cat.id)}
-                           className={cn(
-                             "flex flex-col items-center justify-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-[14px] sm:rounded-2xl border transition-all aspect-square sm:aspect-auto sm:min-h-[90px]",
-                             isSelected 
-                               ? (isDarkMode ? "bg-white/10 border-white/20 text-white ring-2 ring-white/10" : "bg-slate-900 border-slate-900 text-white shadow-premium")
-                               : (isDarkMode ? "bg-white/[0.03] border-white/5 text-slate-400 hover:bg-white/[0.06]" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50")
-                           )}
-                         >
-                           <cat.icon size={24} style={{ color: cat.color }} />
-                           <span className="text-[10px] font-bold tracking-tight whitespace-nowrap">{cat.name}</span>
-                         </button>
-                       )
-                     })}
-                  </div>
-                </div>
-                
-                {formError && (
-                  <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold p-3 rounded-xl text-center w-full box-border">
-                    {formError}
-                  </div>
-                )}
-                
-                <button 
-                  onClick={handleSaveTransaction}
-                  className="w-full mt-4 py-4 rounded-[20px] font-black uppercase tracking-[0.1em] text-white transition-all flex items-center justify-center gap-3 cursor-pointer hover:scale-[1.02] active:scale-[0.98] box-border shadow-xl shadow-indigo-500/20"
-                  style={{ backgroundColor: transactionType === "expense" ? "#4f46e5" : "#10B981" }}
+                {/* Save button for templates tab */}
+                <button
+                  onClick={handleSave}
+                  className="w-full text-white font-black py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm tracking-wide"
+                  style={{ backgroundColor: primaryColor, boxShadow: `0 8px 24px -6px ${primaryColor}55` }}
                 >
-                  <Check size={20} strokeWidth={4} />
-                  CONFIRMAR
+                  <Save size={16} strokeWidth={2.5} />
+                  {t('save')}
                 </button>
-              </div>
-            </motion.div>
-          </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
-      
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {showFeedback && (
-            <motion.div 
-              initial={{ opacity: 0, y: 50, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.9 }}
-              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[10000] flex items-center gap-3 bg-emerald-500 text-white px-6 py-4 rounded-full shadow-2xl font-tech font-bold tracking-wide"
-          >
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-              <Check size={16} strokeWidth={3} />
-            </div>
-            Registro adicionado com sucesso
-          </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </div>
   );
 });
