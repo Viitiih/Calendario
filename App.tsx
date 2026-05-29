@@ -24,26 +24,10 @@ import { LoginScreen } from "./components/LoginScreen";
 import { PendingScreen } from "./components/PendingScreen";
 import { CalendarView } from "./components/CalendarView";
 
-const loadFinanceView = () =>
-  import("./components/FinanceView").then((mod) => ({
-    default: mod.default ?? mod.FinanceView,
-  }));
-
-const loadGoalsView = () =>
-  import("./components/GoalsView").then((mod) => ({
-    default: mod.default ?? mod.GoalsView,
-  }));
-
-const loadShareView = () =>
-  import("./components/ShareView").then((mod) => ({
-    default: mod.default ?? mod.ShareView,
-  }));
-
-const loadDayModal = () =>
-  import("./components/DayModal").then((mod) => ({
-    default: mod.default ?? mod.DayModal,
-  }));
-
+const loadFinanceView = () => import("./components/FinanceView").then((mod) => ({ default: mod.FinanceView }));
+const loadGoalsView = () => import("./components/GoalsView").then((mod) => ({ default: mod.GoalsView }));
+const loadShareView = () => import("./components/ShareView").then((mod) => ({ default: mod.ShareView }));
+const loadDayModal = () => import("./components/DayModal").then((mod) => ({ default: mod.DayModal }));
 const loadSettings = () => import("./components/Settings");
 
 const FinanceView = React.lazy(loadFinanceView);
