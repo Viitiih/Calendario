@@ -1,845 +1,874 @@
 import * as React from "react";
-import { memo, useState, useMemo } from "react";
-import { 
-  format, 
-  startOfMonth, 
-  endOfMonth, 
-  isSameMonth, 
-  parseISO,
-  isSameYear,
-  isSameDay,
-  startOfDay,
-  endOfDay
-} from "date-fns";
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  TrendingUp, 
-  TrendingDown, 
-  Target, 
-  ChevronDown,
-  X,
-  Wallet,
+import { useState, memo } from "react";
+import {
+  Share2,
+  Link as LinkIcon,
   Check,
-  Download,
-  Calendar
+  Copy,
+  Trash2,
+  CalendarDays,
+  Users,
+  LogIn,
+  History,
+  ShieldCheck,
+  UserMinus,
+  UserPlus,
 } from "lucide-react";
-import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { cn, formatCurrency, EXPENSE_COLOR } from "../lib/utils";
-import { CalendarData, Expense, Income, FinanceRecord } from "../types";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, getCategoryIcon, getCategoryColor } from "../constants";
+import { cn } from "../lib/utils";
+import { AdminHistoryEntry, CalendarData } from "../types";
 
-interface FinanceViewProps {
+interface ShareViewProps {
+  calendarId: string;
   calendarData: CalendarData;
   updateCalendar: (d: CalendarData) => void;
-  onAddFinanceRecord?: (record: any, type: "expense" | "income") => void;
   primaryColor: string;
   isDarkMode: boolean;
-  t: (key: string) => string;
-  currentLocale: any;
-  currentMonth: Date;
+  isAdmin: boolean;
+  t: (k: any) => string;
+  onJoinCalendar?: (code: string) => Promise<boolean>;
+  onCopyToShared?: () => void;
+  onCopyToLocal?: () => void;
+  onSync?: () => void;
 }
 
-export const FinanceView = memo(({ 
-  calendarData, 
-  updateCalendar, 
-  onAddFinanceRecord,
-  primaryColor, 
-  isDarkMode, 
-  t,
-  currentMonth
-}: FinanceViewProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
-  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
-  
-  // State for date filters
-  const [dateFilterType, setDateFilterType] = useState<"month" | "day" | "custom">("month");
-  const [dateFilterDay, setDateFilterDay] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [dateFilterStart, setDateFilterStart] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [dateFilterEnd, setDateFilterEnd] = useState(() => format(endOfMonth(new Date()), "yyyy-MM-dd"));
-  
-  // State for adding new transactions directly from finance view
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemValue, setNewItemValue] = useState("");
-  const [newItemDate, setNewItemDate] = useState(() => new Date().toISOString().substring(0, 10));
-  const [newItemCategory, setNewItemCategory] = useState("food");
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+export const ShareView = memo(
+  ({
+    calendarId,
+    calendarData,
+    updateCalendar,
+    primaryColor,
+    isDarkMode,
+    isAdmin,
+    t,
+    onJoinCalendar,
+    onCopyToShared,
+    onCopyToLocal,
+    onSync,
+  }: ShareViewProps) => {
+    const [copied, setCopied] = useState(false);
+    const [copiedCode, setCopiedCode] = useState(false);
+    const [activeSubTab, setActiveSubTab] = useState<"invite" | "pending" | "join" | "history">(
+      "invite"
+    );
+    const [joinCode, setJoinCode] = useState("");
+    const [joinError, setJoinError] = useState<string | null>(null);
+    const [joinLoading, setJoinLoading] = useState(false);
+    const [joinSuccess, setJoinSuccess] = useState(false);
 
-  const allTransactions = useMemo(() => {
-    const list: FinanceRecord[] = [];
-    if (calendarData.registrosFinanceiros) {
-      list.push(...calendarData.registrosFinanceiros);
-    }
-    if (calendarData.expenses) {
-      calendarData.expenses.forEach(e => {
-        list.push({
-          id: e.id,
-          tipo: "gasto",
-          descricao: e.name || "Sem Nome",
-          valor: Math.abs((e.value || 0) * (e.quantity || 1)),
-          categoria: e.category || "outros",
-          data: e.date
-        });
-      });
-    }
-    if (calendarData.incomes) {
-      calendarData.incomes.forEach(i => {
-        list.push({
-          id: i.id,
-          tipo: "receber",
-          descricao: i.name || "Sem Nome",
-          valor: Math.abs(i.value || 0),
-          categoria: i.category || "outros",
-          data: i.date
-        });
-      });
-    }
-    return list;
-  }, [calendarData.registrosFinanceiros, calendarData.expenses, calendarData.incomes]);
+    const inviteCode = calendarData.inviteCode || calendarId;
+    const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`;
 
-  const monthTransactions = useMemo(() => {
-    return allTransactions.filter(r => {
-      const d = parseISO(r.data);
-      return isSameMonth(d, currentMonth) && isSameYear(d, currentMonth);
-    });
-  }, [allTransactions, currentMonth]);
-
-  const periodTransactions = useMemo(() => {
-    return allTransactions.filter(r => {
-      const d = parseISO(r.data);
-      if (dateFilterType === "month") {
-        return isSameMonth(d, currentMonth) && isSameYear(d, currentMonth);
-      } else if (dateFilterType === "day") {
-        try {
-          const filterDay = parseISO(dateFilterDay);
-          return isSameDay(d, filterDay);
-        } catch { return true; }
-      } else if (dateFilterType === "custom") {
-        try {
-          const start = startOfDay(parseISO(dateFilterStart));
-          const end = endOfDay(parseISO(dateFilterEnd));
-          return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
-        } catch { return true; }
-      }
-      return true;
-    });
-  }, [allTransactions, currentMonth, dateFilterType, dateFilterDay, dateFilterStart, dateFilterEnd]);
-
-  const stats = useMemo(() => {
-    const now = new Date();
-    // Use end of today as the boundary for "realized" vs "future"
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-    let realizedWork = 0;
-    let futureWork = 0;
-
-    (calendarData.workDays || []).forEach(wd => {
-      const d = parseISO(wd.date);
-      let inPeriod = false;
-      if (dateFilterType === "month") {
-        inPeriod = isSameMonth(d, currentMonth) && isSameYear(d, currentMonth);
-      } else if (dateFilterType === "day") {
-        try {
-          const filterDay = parseISO(dateFilterDay);
-          inPeriod = isSameDay(d, filterDay);
-        } catch {}
-      } else if (dateFilterType === "custom") {
-        try {
-           const start = startOfDay(parseISO(dateFilterStart));
-           const end = endOfDay(parseISO(dateFilterEnd));
-           inPeriod = d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
-        } catch {}
-      }
-
-      if (inPeriod) {
-        if (d <= endOfToday) {
-          realizedWork += (wd.value || 0);
-        } else {
-          futureWork += (wd.value || 0);
-        }
-      }
-    });
-
-    let realizedExtra = 0;
-    let futureExtra = 0;
-    let totalExpenses = 0;
-
-    periodTransactions.forEach(r => {
-      if (r.tipo === "gasto") {
-        totalExpenses += r.valor;
-      } else {
-        const d = parseISO(r.data);
-        if (d <= endOfToday) {
-          realizedExtra += r.valor;
-        } else {
-          futureExtra += r.valor;
-        }
-      }
-    });
-    
-    const realizedGross = realizedWork + realizedExtra;
-    const futureGross = futureWork + futureExtra;
-    const currentNet = realizedGross - totalExpenses; // Subtracts the absolute value of expenses
-    const estimatedTotal = currentNet + futureGross;
-    
-    return { 
-      gross: realizedGross + futureGross, // total gross for backward compatibility
-      totalExpenses, 
-      currentNet, 
-      futureGross,
-      estimatedTotal
-    };
-  }, [calendarData.workDays, periodTransactions, currentMonth, dateFilterType, dateFilterDay, dateFilterStart, dateFilterEnd]);
-
-  const filteredTransactions = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    return monthTransactions
-      .filter(r => {
-        const matchesSearch = !normalizedSearch || r.descricao.toLowerCase().includes(normalizedSearch);
-        const matchesCategory = activeCategory === "all" || r.categoria === activeCategory;
-        const matchesType = (transactionType === "expense" && r.tipo === "gasto") || (transactionType === "income" && r.tipo === "receber");
-        return matchesSearch && matchesCategory && matchesType;
-      })
-      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
-  }, [monthTransactions, searchTerm, activeCategory, transactionType]);
-
-  const visibleTransactions = useMemo(() => filteredTransactions.slice(0, 80), [filteredTransactions]);
-
-  const handleSaveTransaction = () => {
-    if (!newItemName) {
-      setFormError("A descrição do registro é obrigatória.");
-      return;
-    }
-    if (!newItemValue) {
-      setFormError("O valor não existe ou é inválido.");
-      return;
-    }
-    
-    const rawDigits = newItemValue.replace(/\D/g, '');
-    const valueNum = rawDigits ? parseInt(rawDigits, 10) / 100 : Number.NaN;
-    if (isNaN(valueNum) || valueNum <= 0) {
-      setFormError("O valor não existe ou é inválido. Informar valor maior que zero.");
-      return;
-    }
-    
-    if (!transactionType) {
-      setFormError("Você deve escolher entre 'Gasto' ou 'A Receber'.");
-      return;
-    }
-    
-    setFormError("");
-
-    let recordDate;
-    if (newItemDate) {
-      recordDate = parseISO(newItemDate);
-      if (isNaN(recordDate.getTime())) recordDate = new Date();
-    } else {
-      recordDate = new Date();
-      if (!isSameMonth(currentMonth, recordDate) || !isSameYear(currentMonth, recordDate)) {
-        recordDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1, 12, 0, 0);
-      }
-    }
-
-    const newRecord: FinanceRecord = {
-      id: Math.random().toString(36).substr(2, 9),
-      tipo: transactionType === "expense" ? "gasto" : "receber",
-      descricao: newItemName,
-      valor: valueNum,
-      categoria: newItemCategory,
-      data: recordDate.toISOString()
+    const handleCopyLink = () => {
+      navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     };
 
-    if (onAddFinanceRecord) {
-      onAddFinanceRecord(newRecord, transactionType);
-    }
+    const handleCopyCode = () => {
+      navigator.clipboard.writeText(inviteCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    };
 
-    setNewItemName("");
-    setNewItemValue("");
-    setNewItemDate(new Date().toISOString().substring(0, 10));
-    setNewItemCategory(transactionType === "expense" ? "food" : "salary");
-    setIsAddModalOpen(false);
+    const buildHistoryEntry = (
+      action: AdminHistoryEntry["action"],
+      userInfo: { id: string; name: string }
+    ): AdminHistoryEntry => {
+      const actionText =
+        action === "accepted"
+          ? "aprovou a entrada de"
+          : action === "declined"
+            ? "recusou a solicitação de"
+            : "removeu";
+
+      return {
+        id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        action,
+        userId: userInfo.id,
+        userName: userInfo.name,
+        createdAt: new Date().toISOString(),
+        description: `Administrador ${actionText} ${userInfo.name}`,
+      };
+    };
+
+    const withHistory = (
+      nextData: CalendarData,
+      entry: AdminHistoryEntry
+    ): CalendarData => ({
+      ...nextData,
+      adminHistory: [entry, ...(calendarData.adminHistory || [])].slice(0, 50),
+    });
+
+    const handleAccept = (user: {
+      id: string;
+      name: string;
+      color: string;
+    }) => {
+      const users = [...(calendarData.users || []), user];
+      const pending = (calendarData.pendingUsers || []).filter(
+        (u) => u.id !== user.id
+      );
+
+      updateCalendar(
+        withHistory(
+          {
+            ...calendarData,
+            users,
+            pendingUsers: pending,
+          },
+          buildHistoryEntry("accepted", user)
+        )
+      );
+    };
+
+    const handleDecline = (userId: string) => {
+      const declinedUser = (calendarData.pendingUsers || []).find(
+        (u) => u.id === userId
+      );
+      const pending = (calendarData.pendingUsers || []).filter(
+        (u) => u.id !== userId
+      );
+
+      updateCalendar(
+        withHistory(
+          {
+            ...calendarData,
+            pendingUsers: pending,
+          },
+          buildHistoryEntry("declined", {
+            id: userId,
+            name: declinedUser?.name || "usuário",
+          })
+        )
+      );
+    };
+
+    const handleRemoveMember = (userId: string) => {
+      const removedUser = (calendarData.users || []).find((u) => u.id === userId);
+      const users = (calendarData.users || []).filter((u) => u.id !== userId);
+      updateCalendar(
+        withHistory(
+          { ...calendarData, users },
+          buildHistoryEntry("removed", {
+            id: userId,
+            name: removedUser?.name || "usuário",
+          })
+        )
+      );
+    };
     
-    setShowFeedback(true);
-    setTimeout(() => setShowFeedback(false), 3000);
-  };
+    const pendingCount = (calendarData.pendingUsers || []).length;
+    const historyItems = calendarData.adminHistory || [];
 
-  return (
-    <div className="space-y-6">
-      {/* Finance Summary Card */}
-      <div className={cn(
-        "rounded-[32px] sm:rounded-[40px] p-5 sm:p-8 border transition-all duration-300 relative overflow-hidden",
-        isDarkMode 
-          ? "bg-black/40 border-white/[0.03] shadow-2xl" 
-          : "bg-white border-slate-200/60 shadow-premium"
-      )}>
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
+    return (
+      <div className="space-y-8 pb-20 max-w-2xl mx-auto px-1 overflow-x-hidden">
+        <div className="text-center space-y-4">
+          <div
+            className="w-20 h-20 rounded-[28px] mx-auto flex items-center justify-center text-white shadow-2xl relative group transition-all hover:scale-105 hover:rotate-3"
+            style={{ backgroundColor: primaryColor }}
+          >
+            <div className="absolute inset-0 rounded-[28px] bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Share2 size={32} strokeWidth={2.5} />
+          </div>
 
-        <div className="flex justify-between items-start mb-5 sm:mb-6 relative z-30">
-          <div className="space-y-0.5 sm:space-y-1">
-            <h3 className="tech-label tracking-[0.25em]">LÍQUIDO ATUAL</h3>
-            <p className={cn(
-              "text-4xl sm:text-5xl font-tech font-bold tracking-tighter transition-all duration-300",
-              stats.currentNet >= 0 ? (isDarkMode ? "text-emerald-400" : "text-emerald-500") : "text-red-500"
-            )}>
-              {formatCurrency(stats.currentNet)}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-3 right-0 top-0 absolute sm:relative">
-            <div className={cn(
-              "flex items-center gap-1",
-            )}>
-              <button 
-                onClick={() => setDateFilterType("day")} 
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors", 
-                  dateFilterType === "day" 
-                    ? (isDarkMode ? "bg-white/10 text-slate-100" : "bg-slate-200 text-slate-900") 
-                    : "text-slate-500 hover:text-slate-400 hover:bg-white/5"
-                )}
-              >
-                Dia
-              </button>
-              <button 
-                onClick={() => setDateFilterType("month")} 
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors", 
-                  dateFilterType === "month" 
-                    ? (isDarkMode ? "bg-white/10 text-slate-100" : "bg-slate-200 text-slate-900") 
-                    : "text-slate-500 hover:text-slate-400 hover:bg-white/5"
-                )}
-              >
-                Mês
-              </button>
-              <button 
-                onClick={() => setDateFilterType("custom")} 
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors", 
-                  dateFilterType === "custom" 
-                    ? (isDarkMode ? "bg-white/10 text-slate-100" : "bg-slate-200 text-slate-900") 
-                    : "text-slate-500 hover:text-slate-400 hover:bg-white/5"
-                )}
-              >
-                Pers.
-              </button>
-            </div>
-            
-            {dateFilterType === "day" && (
-               <div className="animate-in fade-in slide-in-from-top-1">
-                 <input 
-                   type="date"
-                   value={dateFilterDay}
-                   onChange={(e) => setDateFilterDay(e.target.value)}
-                   className={cn(
-                     "bg-transparent border-b focus:outline-none focus:border-emerald-500 pb-1 px-1 text-base sm:text-sm font-bold w-[130px] transition-colors", 
-                     isDarkMode ? "border-white/20 text-slate-300" : "border-slate-300 text-slate-700"
-                   )}
-                 />
-               </div>
-            )}
-            
-            {dateFilterType === "custom" && (
-               <div className="flex flex-col sm:flex-row gap-2 sm:items-center animate-in fade-in slide-in-from-top-1">
-                 <input 
-                   type="date"
-                   value={dateFilterStart}
-                   onChange={(e) => setDateFilterStart(e.target.value)}
-                   className={cn(
-                     "bg-transparent border-b focus:outline-none focus:border-emerald-500 pb-1 px-1 text-sm font-bold w-[120px] transition-colors", 
-                     isDarkMode ? "border-white/20 text-slate-300" : "border-slate-300 text-slate-700"
-                   )}
-                 />
-                 <span className="text-slate-500 hidden sm:block px-1">-</span>
-                 <input 
-                   type="date"
-                   value={dateFilterEnd}
-                   onChange={(e) => setDateFilterEnd(e.target.value)}
-                   className={cn(
-                     "bg-transparent border-b focus:outline-none focus:border-emerald-500 pb-1 px-1 text-sm font-bold w-[120px] transition-colors", 
-                     isDarkMode ? "border-white/20 text-slate-300" : "border-slate-300 text-slate-700"
-                   )}
-                 />
-               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 sm:gap-4 relative z-10 mb-3 sm:mb-4">
-          <div className={cn(
-            "p-3 sm:p-4 rounded-3xl border transition-all duration-200 group overflow-hidden relative",
-            isDarkMode ? "bg-white/[0.03] border-white/[0.05]" : "bg-slate-50/50 border-slate-200/60"
-          )}>
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-              <div className="w-5 h-5 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${EXPENSE_COLOR}20` }}>
-                <TrendingDown size={12} style={{ color: EXPENSE_COLOR }} strokeWidth={3} />
-              </div>
-              <span className="tech-label text-[8px] sm:text-[10px] tracking-widest opacity-40">GASTOS</span>
-            </div>
-            <p className={cn("text-lg sm:text-2xl font-tech font-bold break-all", isDarkMode ? "text-white" : "text-slate-900")}>
-              {formatCurrency(stats.totalExpenses)}
-            </p>
-          </div>
-          <div className={cn(
-            "p-3 sm:p-4 rounded-3xl border transition-all duration-200 group overflow-hidden relative",
-            isDarkMode ? "bg-blue-500/10 border-blue-500/20" : "bg-blue-50 border-blue-200"
-          )}>
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-              <div className="w-5 h-5 rounded-lg flex items-center justify-center bg-blue-500/20">
-                <TrendingUp size={12} className="text-blue-600 dark:text-blue-400" strokeWidth={3} />
-              </div>
-              <span className="tech-label text-[8px] sm:text-[10px] tracking-widest text-blue-600 dark:text-blue-400">A RECEBER</span>
-            </div>
-            <p className="text-lg sm:text-2xl font-tech font-bold text-blue-600 dark:text-blue-400 break-all">
-              +{formatCurrency(stats.futureGross)}
-            </p>
-          </div>
-        </div>
-
-        {/* Estimated Total Banner */}
-        <div className={cn(
-          "relative z-10 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border flex items-center justify-between transition-all",
-          isDarkMode ? "bg-emerald-500/10 border-emerald-500/20" : "bg-emerald-50 border-emerald-200"
-        )}>
-           <span className="tech-label text-[8px] sm:text-[10px] tracking-widest text-emerald-600 dark:text-emerald-400">TOTAL ESTIMADO</span>
-           <span className="text-base sm:text-xl font-tech font-bold text-emerald-600 dark:text-emerald-400">
-             {formatCurrency(stats.estimatedTotal)}
-           </span>
-        </div>
-      </div>
-
-      {/* Expenses Management */}
-      <div className="space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-3">
-             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-             <h4 className="tech-label tracking-[0.2em]">Detalhamento</h4>
-          </div>
-          <div className="flex items-center gap-2">
-            <motion.button 
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
+          <div className="space-y-1.5 px-4">
+            <h2
               className={cn(
-                "w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all border",
-                isDarkMode ? "bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.05]" : "bg-white border-slate-200 text-slate-500 shadow-soft hover:bg-slate-50"
+                "text-3xl font-black tracking-tight",
+                isDarkMode ? "text-white" : "text-slate-900"
               )}
-              title="Baixar Relatório (CSV)"
-              onClick={() => {
-                const lines = [
-                  "Data,Tipo,Categoria,Descricao,Valor",
-                  ...monthTransactions.map(r => `${format(parseISO(r.data), "yyyy-MM-dd")},${r.tipo},${r.categoria},"${r.descricao}",${r.valor}`)
-                ];
-                const blob = new Blob([lines.join('\n')], { type: "text/csv;charset=utf-8" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `relatorio_financeiro_${format(new Date(), "yyyy-MM")}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
             >
-              <Download strokeWidth={2.5} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
-            </motion.button>
-            <motion.button 
-              whileHover={{ scale: 1.1, rotate: 90 }}
-              whileTap={{ scale: 0.9 }}
-              className="relative z-[110] w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 transition-all"
-              onClick={() => setIsAddModalOpen(true)}
+              {t("share_view_title")}
+            </h2>
+
+            <p
+              className={cn(
+                "text-sm font-medium leading-relaxed",
+                isDarkMode ? "text-slate-400" : "text-slate-500"
+              )}
             >
-              <Plus strokeWidth={3} className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
-            </motion.button>
+              {t("share_view_subtitle")}
+            </p>
           </div>
         </div>
 
-        {/* Local Scope Tab Switcher */}
-        <div className="flex gap-2">
-           <button 
-             onClick={() => { setTransactionType("expense"); setNewItemCategory("food"); }}
-             className={cn("flex-1 py-2 sm:py-3 text-[10px] sm:text-xs uppercase font-black tracking-widest rounded-xl sm:rounded-2xl border transition-all", transactionType === "expense" ? "bg-slate-900 border-slate-900 text-white" : "border-slate-200 text-slate-400 bg-transparent")}
-           >Gastos</button>
-           <button 
-             onClick={() => { setTransactionType("income"); setNewItemCategory("salary"); }}
-             className={cn("flex-1 py-2 sm:py-3 text-[10px] sm:text-xs uppercase font-black tracking-widest rounded-xl sm:rounded-2xl border transition-all", transactionType === "income" ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-slate-400 bg-transparent")}
-           >Receitas</button>
-        </div>
+        <div
+          className={cn(
+            "p-1.5 rounded-2xl grid grid-cols-2 sm:grid-cols-4 gap-1 border mx-0 sm:mx-0 w-full",
+            isDarkMode
+              ? "bg-black/40 border-white/5"
+              : "bg-slate-100 border-slate-200"
+          )}
+        >
+          <button
+            onClick={() => setActiveSubTab("invite")}
+            className={cn(
+              "min-w-0 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-[0.12em] sm:tracking-widest transition-all truncate",
+              activeSubTab === "invite"
+                ? isDarkMode
+                  ? "bg-white text-black shadow-lg"
+                  : "bg-white text-slate-900 shadow-sm"
+                : isDarkMode
+                  ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+            )}
+          >
+            {t("invite_tab")}
+          </button>
 
-        <div className="pb-6 pt-2">
-          <div className="relative z-50">
+          <button
+            onClick={() => setActiveSubTab("pending")}
+            className={cn(
+              "min-w-0 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-[0.12em] sm:tracking-widest transition-all relative truncate",
+              activeSubTab === "pending"
+                ? isDarkMode
+                  ? "bg-white text-black shadow-lg"
+                  : "bg-white text-slate-900 shadow-sm"
+                : isDarkMode
+                  ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+            )}
+          >
+            {t("pending_tab")}
+
+            {pendingCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] flex items-center justify-center rounded-full font-black shadow-lg ring-2 ring-black">
+                {pendingCount}
+              </span>
+            )}
+          </button>
+
+          {isAdmin && (
             <button
-              onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
+              onClick={() => setActiveSubTab("history")}
               className={cn(
-                "flex items-center justify-between w-full px-5 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl border transition-all",
-                isDarkMode ? "bg-white/[0.03] text-slate-300 border-white/[0.05] hover:bg-white/[0.05]" : "bg-white text-slate-600 border-slate-200 shadow-sm hover:bg-slate-50"
+                "min-w-0 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-[0.12em] sm:tracking-widest transition-all truncate",
+                activeSubTab === "history"
+                  ? isDarkMode
+                    ? "bg-white text-black shadow-lg"
+                    : "bg-white text-slate-900 shadow-sm"
+                  : isDarkMode
+                    ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
               )}
             >
-              <div className="flex items-center gap-3">
-                <Filter size={18} className="opacity-70" />
-                <span className="text-xs sm:text-sm font-black uppercase tracking-widest">
-                  Filtros {activeCategory !== "all" && <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-500 text-white text-[10px]">Ativo</span>}
-                </span>
-              </div>
-              <motion.div
-                animate={{ rotate: isFiltersExpanded ? 180 : 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              >
-                <ChevronDown size={18} className="opacity-50" />
-              </motion.div>
+              Histórico
             </button>
+          )}
 
-            <AnimatePresence>
-              {isFiltersExpanded && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                  className="absolute left-0 right-0 top-full mt-2 z-50"
-                >
-                  <div className={cn(
-                    "p-3 rounded-xl sm:rounded-2xl border flex flex-col gap-1 shadow-2xl backdrop-blur-xl max-h-[300px] overflow-y-auto no-scrollbar",
-                    isDarkMode ? "bg-slate-900/95 border-white/[0.05]" : "bg-white/95 border-slate-200"
-                  )}>
-                    <button 
-                      onClick={() => { setActiveCategory("all"); setIsFiltersExpanded(false); }}
-                      className={cn(
-                        "flex items-center px-4 py-3 rounded-xl text-xs font-tech font-bold uppercase tracking-[0.1em] transition-all border",
-                        activeCategory === "all" 
-                          ? (isDarkMode ? "bg-white text-black border-white shadow-[0_4px_15px_rgba(255,255,255,0.1)]" : "bg-slate-900 text-white border-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.1)]") 
-                          : (isDarkMode ? "bg-transparent text-slate-400 border-transparent hover:bg-white/[0.05]" : "bg-transparent text-slate-500 border-transparent hover:bg-slate-50")
-                      )}
-                    >
-                      Todos
-                    </button>
-                    {(transactionType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
-                      <button 
-                        key={cat.id}
-                        onClick={() => { setActiveCategory(cat.id); setIsFiltersExpanded(false); }}
+          <button
+            onClick={() => setActiveSubTab("join")}
+            className={cn(
+              "min-w-0 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-[0.12em] sm:tracking-widest transition-all truncate",
+              activeSubTab === "join"
+                ? isDarkMode
+                  ? "bg-white text-black shadow-lg"
+                  : "bg-white text-slate-900 shadow-sm"
+                : isDarkMode
+                  ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+            )}
+          >
+            Entrar
+          </button>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {activeSubTab === "invite" ? (
+            <motion.div
+              key="invite-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="space-y-8 px-4 sm:px-0"
+            >
+              <div
+                className={cn(
+                  "p-6 sm:p-8 rounded-[32px] border",
+                  isDarkMode
+                    ? "bg-[#111111] border-white/5 shadow-2xl"
+                    : "bg-white border-slate-200 shadow-xl"
+                )}
+              >
+                <div className="space-y-8">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <label
                         className={cn(
-                          "flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-tech font-bold uppercase tracking-[0.1em] transition-all border",
-                          activeCategory === cat.id 
-                            ? (isDarkMode ? "bg-white text-black border-white shadow-[0_4px_15px_rgba(255,255,255,0.1)]" : "bg-slate-900 text-white border-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.1)]") 
-                            : (isDarkMode ? "bg-transparent text-slate-400 border-transparent hover:bg-white/[0.05]" : "bg-transparent text-slate-500 border-transparent hover:bg-slate-50")
+                          "text-[10px] font-black uppercase tracking-[0.2em]",
+                          isDarkMode ? "text-slate-500" : "text-slate-400"
                         )}
                       >
-                        <cat.icon strokeWidth={3} style={{ color: activeCategory === cat.id ? undefined : cat.color }} className="w-4 h-4" />
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+                        {t("invite_link_label")}
+                      </label>
 
-            <div className="space-y-4">
-              {filteredTransactions.length === 0 ? (
-                <div className={cn(
-                  "p-12 rounded-[40px] border border-dashed text-center space-y-4",
-                  isDarkMode ? "bg-white/[0.02] border-white/[0.05]" : "bg-slate-50/50 border-slate-200/60"
-                )}>
-                  <div className="w-16 h-16 rounded-full bg-slate-500/5 flex items-center justify-center mx-auto">
-                    <Search className="text-slate-300" size={32} />
-                  </div>
-                  <p className="tech-label opacity-40">Nenhum registro encontrado</p>
-                </div>
-              ) : (
-                visibleTransactions.map((r) => {
-                  const isIncome = r.tipo === "receber";
-                  const Icon = getCategoryIcon(r.categoria, isIncome);
-                  const color = getCategoryColor(r.categoria, isIncome);
-                  return (
+                      <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider shrink-0">
+                        Ativo
+                      </span>
+                    </div>
+
                     <div
-                      key={r.id}
-                      onClick={() => setSelectedRecordId(r.id)}
                       className={cn(
-                        "p-4 rounded-3xl border transition-all duration-300 flex items-center justify-between gap-3 group cursor-pointer",
-                        isDarkMode ? "bg-white/[0.02] border-white/[0.04] hover:bg-white/[0.08]" : "bg-white border-slate-200/50 shadow-soft hover:shadow-premium"
+                        "group flex flex-col gap-3 p-3 rounded-2xl border transition-all duration-300",
+                        isDarkMode
+                          ? "bg-black/50 border-white/5 focus-within:border-white/20"
+                          : "bg-slate-50 border-slate-200 focus-within:border-slate-300 shadow-inner"
                       )}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-10 h-10 rounded-2xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 border"
-                        )} style={{ 
-                          backgroundColor: `${color}15`, 
-                          color: color, 
-                          borderColor: isDarkMode ? `${color}30` : `${color}20` 
-                        }}>
-                          <Icon size={18} strokeWidth={2.5} />
+                      <div className="flex items-center gap-3 min-w-0 px-2 py-2">
+                        <LinkIcon
+                          className={
+                            isDarkMode ? "text-slate-500" : "text-slate-400"
+                          }
+                          size={18}
+                        />
+
+                        <input
+                          type="text"
+                          readOnly
+                          value={inviteLink}
+                          className={cn(
+                            "bg-transparent border-none focus:outline-none text-sm font-bold flex-1 min-w-0 truncate",
+                            isDarkMode ? "text-slate-300" : "text-slate-700"
+                          )}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-3">
+                        <button
+                          onClick={handleCopyCode}
+                          className={cn(
+                            "h-12 px-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 border",
+                            copiedCode
+                              ? "bg-emerald-500 text-white border-emerald-500"
+                              : isDarkMode
+                                ? "bg-white/10 hover:bg-white/20 text-white border-white/5"
+                                : "bg-white hover:bg-slate-100 text-slate-900 border-slate-200"
+                          )}
+                        >
+                          {copiedCode ? (
+                            <Check size={18} strokeWidth={3} />
+                          ) : (
+                            <Copy size={18} strokeWidth={3} />
+                          )}
+                          {copiedCode ? t("copy_success") : "Copiar código"}
+                        </button>
+
+                        <button
+                          onClick={handleCopyLink}
+                          className={cn(
+                            "h-12 px-5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg min-w-0",
+                            copied
+                              ? "bg-emerald-500 text-white shadow-emerald-500/20"
+                              : "bg-amber-500 hover:bg-amber-600 text-black shadow-amber-500/20"
+                          )}
+                        >
+                          {copied ? (
+                            <Check
+                              size={18}
+                              strokeWidth={3}
+                              className="shrink-0"
+                            />
+                          ) : (
+                            <Share2
+                              size={18}
+                              strokeWidth={3}
+                              className="shrink-0"
+                            />
+                          )}
+
+                          <span className="truncate">
+                            {copied ? t("copy_success") : "Copiar link de convite"}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] font-medium text-slate-500 ml-1">
+                      {t("invite_link_hint")}
+                    </p>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "h-px w-full",
+                      isDarkMode ? "bg-white/5" : "bg-slate-100"
+                    )}
+                  />
+
+                  <div className="space-y-4">
+                    <label
+                      className={cn(
+                        "text-[10px] font-black uppercase tracking-[0.2em]",
+                        isDarkMode ? "text-slate-500" : "text-slate-400"
+                      )}
+                    >
+                      {t("invite_code_label")}
+                    </label>
+
+                    <div className="flex flex-col sm:flex-row items-stretch gap-3">
+                      <div
+                        className={cn(
+                          "flex-1 p-4 rounded-2xl border text-center font-mono font-bold tracking-[0.35em] text-xl sm:text-2xl transition-all break-all",
+                          isDarkMode
+                            ? "bg-black/50 border-white/5 text-white"
+                            : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner"
+                        )}
+                      >
+                        {inviteCode}
+                      </div>
+
+                      <button
+                        onClick={handleCopyCode}
+                        className={cn(
+                          "sm:px-8 py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-xl",
+                          copiedCode
+                            ? "bg-emerald-500 text-white"
+                            : isDarkMode
+                              ? "bg-white/10 hover:bg-white/20 text-white border border-white/5"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200"
+                        )}
+                      >
+                        {copiedCode ? (
+                          <Check size={20} strokeWidth={3} />
+                        ) : (
+                          <Copy size={20} strokeWidth={3} />
+                        )}
+                        {copiedCode ? t("copy_success") : "Copiar código"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "mt-6 p-5 rounded-[24px] flex items-start gap-4 border",
+                      isDarkMode
+                        ? "bg-white/[0.02] border-white/5"
+                        : "bg-slate-50/50 border-slate-100"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg",
+                        isDarkMode
+                          ? "bg-white/5 text-slate-200"
+                          : "bg-white text-slate-600"
+                      )}
+                    >
+                      <CalendarDays size={22} />
+                    </div>
+
+                    <div className="space-y-1.5 pt-0.5 min-w-0">
+                      <p
+                        className={cn(
+                          "text-[10px] font-black uppercase tracking-widest",
+                          isDarkMode ? "text-slate-500" : "text-slate-400"
+                        )}
+                      >
+                        ID do Sistema
+                      </p>
+
+                      <p className="text-[11px] font-mono text-slate-500 break-all leading-relaxed font-bold">
+                        {calendarId}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-between px-2">
+                  <h3
+                    className={cn(
+                      "text-[10px] font-black uppercase tracking-[0.2em]",
+                      isDarkMode ? "text-slate-500" : "text-slate-400"
+                    )}
+                  >
+                    {t("members_title")}
+                  </h3>
+
+                  <span className="text-[10px] font-black text-slate-500">
+                    {(calendarData.users || []).length} usuários
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  {(calendarData.users || []).map((u) => (
+                    <div
+                      key={u.id}
+                      className={cn(
+                        "p-5 rounded-3xl flex items-center justify-between border group transition-all duration-300",
+                        isDarkMode
+                          ? "bg-[#111111] border-white/5 hover:border-white/10"
+                          : "bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md"
+                      )}
+                    >
+                      <div className="flex items-center gap-4 min-w-0 flex-1">
+                        <div className="relative">
+                          <div
+                            className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-2xl shrink-0 transition-transform group-hover:scale-110 group-hover:rotate-3"
+                            style={{ backgroundColor: u.color }}
+                          >
+                            {u.name.charAt(0).toUpperCase()}
+                          </div>
+
+                          <div
+                            className={cn(
+                              "absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 rounded-full shadow-lg",
+                              isDarkMode ? "border-[#111111]" : "border-white"
+                            )}
+                          />
                         </div>
-                        <div>
-                          <h4 className={cn("text-xs sm:text-sm font-display font-black", isDarkMode ? "text-slate-100" : "text-slate-900")}>{r.descricao}</h4>
-                          <div className="flex items-center gap-2 mt-0.5">
-                             <p className="tech-label text-[8px] sm:text-[10px] tracking-widest lowercase opacity-40">{format(parseISO(r.data), "dd MMM")}</p>
+
+                        <div className="flex flex-col min-w-0 gap-1">
+                          <span
+                            className={cn(
+                              "text-base font-black truncate tracking-tight",
+                              isDarkMode ? "text-white" : "text-slate-900"
+                            )}
+                          >
+                            {u.name}
+                          </span>
+
+                          <div className="flex items-center gap-2">
+                            {calendarData.ownerId === u.id ? (
+                              <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
+                                {t("admin_badge")}
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest bg-slate-500/10 px-2 py-0.5 rounded-full border border-slate-500/10">
+                                {t("member_badge")}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className={cn("text-base sm:text-lg font-tech font-bold", isIncome ? "text-emerald-500" : "text-rose-500")}>
-                          {isIncome ? "+" : "-"}{formatCurrency(Math.abs(r.valor))}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              {filteredTransactions.length > visibleTransactions.length && (
-                <div className={cn(
-                  "px-4 py-3 rounded-2xl border text-center text-[11px] font-bold opacity-70",
-                  isDarkMode ? "bg-white/[0.02] border-white/[0.04]" : "bg-white border-slate-200/50"
-                )}>
-                  Mostrando os 80 registros mais recentes. Use os filtros para encontrar registros antigos.
-                </div>
-              )}
-            </div>
-      </div>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {selectedRecordId && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[10000] flex items-end justify-center sm:items-center p-4 bg-black/60 backdrop-blur-sm"
-            onPointerDownCapture={(e) => e.stopPropagation()}
-            style={{ touchAction: "auto" }}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className={cn(
-                "w-[95%] sm:w-[90%] max-w-sm mb-8 sm:mb-10 rounded-[32px] p-6 sm:p-8 border shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar",
-                isDarkMode ? "bg-[#111111] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"
-              )}
-            >
-              <button 
-                onClick={() => setSelectedRecordId(null)}
-                className="absolute top-4 right-4 w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-slate-500/10 text-slate-500 hover:bg-slate-500/20 z-10 backdrop-blur-md"
-              >
-                <X size={18} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
-              </button>
-              
-              {(() => {
-                const record = allTransactions.find(r => r.id === selectedRecordId);
-                if (!record) return <p>Registro não encontrado.</p>;
-                
-                const isIncome = record.tipo === "receber";
-                const Icon = getCategoryIcon(record.categoria, isIncome);
-                const color = getCategoryColor(record.categoria, isIncome);
-
-                return (
-                  <div className="space-y-4 sm:space-y-6 pt-2">
-                    <div className="flex flex-col items-center justify-center text-center space-y-3 sm:space-y-4">
-                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl flex items-center justify-center border-2" style={{ 
-                        backgroundColor: `${color}15`, 
-                        color: color, 
-                        borderColor: isDarkMode ? `${color}30` : `${color}20` 
-                      }}>
-                        <Icon strokeWidth={2} className="w-8 h-8 sm:w-9 sm:h-9" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl sm:text-2xl font-display font-black pr-6 pl-6">{record.descricao}</h2>
-                        <span className="tech-label text-[10px] sm:text-xs opacity-40 uppercase inline-block mt-2">
-                          {record.tipo === "gasto" ? "Gasto" : "A Receber"} • {record.categoria}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className={cn("p-4 sm:p-6 rounded-3xl border flex items-center justify-center", isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200")}>
-                      <span className={cn(
-                        "text-3xl sm:text-4xl font-tech font-bold",
-                        isIncome ? "text-emerald-500" : "text-rose-500"
-                      )}>
-                        {isIncome ? "+" : "-"}{formatCurrency(record.valor)}
-                      </span>
-                    </div>
-                    
-                    <div className="pt-2 text-center sm:text-left">
-                      <p className="tech-label text-[10px] opacity-40 mb-1">Data do Registro</p>
-                      <p className="text-sm sm:text-base font-semibold">{format(parseISO(record.data), "dd/MM/yyyy • HH:mm")}</p>
-                    </div>
-                  </div>
-                );
-              })()}
-            </motion.div>
-          </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
+                     <div className="flex flex-col items-end gap-1">
+  <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">
+    {t("online_now")}
+  </span>
+  {isAdmin && calendarData.ownerId !== u.id && (
+    <button
+      onClick={() => handleRemoveMember(u.id)}
+      className={cn(
+        "w-8 h-8 rounded-xl transition-all flex items-center justify-center active:scale-95 border mt-1",
+        isDarkMode
+          ? "bg-white/5 hover:bg-rose-500/20 text-slate-600 hover:text-rose-400 border-white/5"
+          : "bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-500 border-slate-200"
       )}
-
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {isAddModalOpen && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[10000] flex items-end justify-center sm:items-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm box-border"
-            onPointerDownCapture={(e) => e.stopPropagation()}
-            style={{ touchAction: "auto" }}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className={cn(
-                "w-[95%] sm:w-full max-w-[500px] rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 pb-6 sm:pb-10 border shadow-2xl relative max-h-[92vh] overflow-y-auto box-border no-scrollbar",
-                isDarkMode ? "bg-[#090909] border-white/5" : "bg-white border-slate-200"
-              )}
+    >
+      <Trash2 size={14} strokeWidth={2.5} />
+    </button>
+  )}
+</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          ) : activeSubTab === "pending" ? (
+            <motion.div
+              key="pending-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="space-y-6 px-4 sm:px-0"
             >
-              <button 
-                onClick={() => setIsAddModalOpen(false)}
-                className="absolute right-4 top-4 sm:right-6 sm:top-6 w-10 h-10 rounded-full flex items-center justify-center bg-slate-500/10 text-slate-400 hover:bg-slate-500/20 z-10 transition-all"
-              >
-                <X size={20} />
-              </button>
-              
-              <h3 className={cn("text-xl sm:text-2xl font-display font-black mb-5 mt-1 sm:mt-0", isDarkMode ? "text-white" : "text-slate-900")}>Novo Registro</h3>
-              
-              <div className="space-y-6">
-                <div className="flex gap-2 p-1.5 rounded-[22px] bg-white/5 box-border">
-                  <button 
-                    onClick={() => { setTransactionType("expense"); setNewItemCategory("food"); }}
+              <div className="px-4 text-center space-y-2">
+                <h3
+                  className={cn(
+                    "text-lg font-black tracking-tight",
+                    isDarkMode ? "text-white" : "text-slate-900"
+                  )}
+                >
+                  {t("pending_requests")}
+                </h3>
+
+                <p
+                  className={cn(
+                    "text-xs font-medium leading-relaxed max-w-xs mx-auto",
+                    isDarkMode ? "text-slate-500" : "text-slate-500"
+                  )}
+                >
+                  Novos usuários solicitando acesso aparecerão aqui para sua
+                  aprovação.
+                </p>
+              </div>
+
+              {(calendarData.pendingUsers || []).length === 0 ? (
+                <div
+                  className={cn(
+                    "py-24 rounded-[40px] border text-center space-y-4 mx-4 sm:mx-0",
+                    isDarkMode
+                      ? "bg-[#111111] border-white/5"
+                      : "bg-slate-50 border-slate-200"
+                  )}
+                >
+                  <div
                     className={cn(
-                      "flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-[18px] transition-all",
-                      transactionType === "expense" ? "bg-white text-black shadow-lg" : "text-slate-500"
+                      "w-16 h-16 rounded-[24px] flex items-center justify-center mx-auto shadow-2xl transition-all",
+                      isDarkMode
+                        ? "bg-white/5 text-slate-600"
+                        : "bg-white text-slate-300"
                     )}
-                  >GASTO
-                  </button>
-                  <button 
-                    onClick={() => { setTransactionType("income"); setNewItemCategory("salary"); }}
-                    className={cn(
-                      "flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-[18px] transition-all",
-                      transactionType === "income" ? "bg-white text-emerald-600 shadow-lg" : "text-slate-500"
-                    )}
-                  >A RECEBER
-                  </button>
-                </div>
-                
-                <div className="w-full box-border">
-                  <label className="block text-[11px] uppercase font-black text-slate-500 mb-2.5 ml-1">Descrição</label>
-                  <input 
-                    type="text" 
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="Ex: Assinatura, Venda..."
-                    className={cn(
-                      "w-full px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all outline-none box-border text-[16px] sm:text-[15px] font-medium",
-                      isDarkMode ? "bg-black border-white/10 text-white focus:border-white/20 placeholder:text-slate-700" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner focus:border-blue-500/50 focus:bg-white"
-                    )}
-                  />
-                </div>
-                
-                <div className="flex gap-4">
-                  <div className="w-1/2 box-border">
-                    <label className="block text-[11px] uppercase font-black text-slate-500 mb-2.5 ml-1">Valor (R$)</label>
-                    <input 
-                      type="text" 
-                      inputMode="numeric"
-                      value={newItemValue}
-                      onChange={(e) => {
-                        const digits = e.target.value.replace(/\D/g, "");
-                        if (!digits) {
-                          setNewItemValue("");
-                        } else {
-                          const numericValue = parseInt(digits, 10) / 100;
-                          setNewItemValue(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numericValue));
-                        }
-                      }}
-                      placeholder="R$ 0,00"
-                      className={cn(
-                        "w-full px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all outline-none box-border text-[16px] sm:text-[15px] font-medium",
-                        isDarkMode ? "bg-black border-white/10 text-white focus:border-white/20 placeholder:text-slate-700" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner focus:border-blue-500/50 focus:bg-white"
-                      )}
-                    />
+                  >
+                    <Users size={32} strokeWidth={2} />
                   </div>
-                  
-                  <div className="w-1/2 box-border">
-                    <label className="block text-[11px] uppercase font-black text-slate-500 mb-2.5 ml-1">Data</label>
-                    <input 
-                      type="date" 
-                      value={newItemDate}
-                      onChange={(e) => setNewItemDate(e.target.value)}
+
+                  <div className="space-y-1">
+                    <p
                       className={cn(
-                        "w-full px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all outline-none box-border text-[16px] sm:text-[15px] font-medium",
-                        isDarkMode ? "bg-black border-white/10 text-white focus:border-white/20 placeholder:text-slate-700 [color-scheme:dark]" : "bg-slate-50 border-slate-200 text-slate-900 shadow-inner focus:border-blue-500/50 focus:bg-white"
+                        "text-base font-black",
+                        isDarkMode ? "text-white" : "text-slate-900"
                       )}
-                    />
+                    >
+                      {t("no_pending_requests")}
+                    </p>
+
+                    <p
+                      className={cn(
+                        "text-xs font-medium",
+                        isDarkMode ? "text-slate-500" : "text-slate-400"
+                      )}
+                    >
+                      Sua equipe está completa por enquanto.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(calendarData.pendingUsers || []).map((u) => (
+                    <div
+                      key={u.id}
+                      className={cn(
+                        "p-5 rounded-[32px] flex items-center justify-between border shadow-xl relative overflow-hidden group gap-4",
+                        isDarkMode
+                          ? "bg-[#111111] border-white/5"
+                          : "bg-white border-slate-200"
+                      )}
+                    >
+                      <div className="flex items-center gap-4 min-w-0 flex-1">
+                        <div
+                          className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-2xl shrink-0 transition-transform group-hover:scale-105"
+                          style={{ backgroundColor: u.color }}
+                        >
+                          {u.name.charAt(0).toUpperCase()}
+                        </div>
+
+                        <div className="flex flex-col min-w-0">
+                          <span
+                            className={cn(
+                              "text-lg font-black truncate tracking-tight",
+                              isDarkMode ? "text-white" : "text-slate-900"
+                            )}
+                          >
+                            {u.name}
+                          </span>
+
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            Solicitando entrada
+                          </span>
+                        </div>
+                      </div>
+
+                      {isAdmin && (
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button
+                            onClick={() => handleAccept(u)}
+                            className="h-12 px-6 rounded-2xl bg-white text-black hover:bg-emerald-500 hover:text-white text-xs font-black transition-all active:scale-95 shadow-lg flex items-center justify-center"
+                          >
+                            {t("accept_member")}
+                          </button>
+
+                          <button
+                            onClick={() => handleDecline(u.id)}
+                            className={cn(
+                              "w-12 h-12 rounded-2xl transition-all flex items-center justify-center active:scale-95 border shadow-sm",
+                              isDarkMode
+                                ? "bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border-white/5"
+                                : "bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-500 border-slate-200"
+                            )}
+                          >
+                            <Trash2 size={20} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          ) : activeSubTab === "history" ? (
+            <motion.div
+              key="history-tab"
+              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.98 }}
+              transition={{ duration: 0.28, ease: "easeOut" }}
+              className="space-y-6 px-4 sm:px-0"
+            >
+              <div className="px-4 text-center space-y-2">
+                <h3 className={cn("text-lg font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                  Histórico do administrador
+                </h3>
+                <p className={cn("text-xs font-medium leading-relaxed max-w-xs mx-auto", isDarkMode ? "text-slate-500" : "text-slate-500")}>
+                  Registro das aprovações, recusas e remoções feitas no calendário compartilhado.
+                </p>
+              </div>
+
+              {historyItems.length === 0 ? (
+                <div className={cn(
+                  "py-20 rounded-[40px] border text-center space-y-4",
+                  isDarkMode ? "bg-[#111111] border-white/5" : "bg-slate-50 border-slate-200"
+                )}>
+                  <div className={cn(
+                    "w-16 h-16 rounded-[24px] flex items-center justify-center mx-auto shadow-2xl",
+                    isDarkMode ? "bg-white/5 text-slate-600" : "bg-white text-slate-300"
+                  )}>
+                    <History size={30} strokeWidth={2} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className={cn("text-base font-black", isDarkMode ? "text-white" : "text-slate-900")}>
+                      Nenhuma ação registrada
+                    </p>
+                    <p className="text-xs font-medium text-slate-500">
+                      As próximas ações do administrador aparecerão aqui.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historyItems.map((item) => {
+                    const Icon = item.action === "accepted" ? UserPlus : item.action === "declined" ? UserMinus : ShieldCheck;
+                    const tone = item.action === "accepted" ? "text-emerald-500 bg-emerald-500/10" : item.action === "declined" ? "text-amber-500 bg-amber-500/10" : "text-rose-500 bg-rose-500/10";
+                    return (
+                      <motion.div
+                        key={item.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "p-5 rounded-[28px] border flex items-start gap-4",
+                          isDarkMode ? "bg-[#111111] border-white/5" : "bg-white border-slate-200 shadow-sm"
+                        )}
+                      >
+                        <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", tone)}>
+                          <Icon size={19} strokeWidth={2.5} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("text-sm font-black leading-snug", isDarkMode ? "text-white" : "text-slate-900")}>
+                            {item.description}
+                          </p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-1">
+                            {new Date(item.createdAt).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {/* ── Entrar em Calendário ── */}
+        <AnimatePresence>
+          {activeSubTab === "join" && (
+            <motion.div
+              key="join-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="flex flex-col gap-4 px-4 sm:px-0 mt-2"
+            >
+              <div className={cn(
+                "rounded-3xl p-5 border",
+                isDarkMode ? "bg-white/3 border-white/5" : "bg-white border-slate-200 shadow-sm"
+              )}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                    style={{ background: `${primaryColor}20` }}>
+                    <LogIn size={18} style={{ color: primaryColor }} />
+                  </div>
+                  <div>
+                    <p className={cn("font-black text-sm", isDarkMode ? "text-white" : "text-slate-900")}>
+                      Entrar em outro calendário
+                    </p>
+                    <p className={cn("text-xs mt-0.5", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      Digite o código compartilhado pelo administrador
+                    </p>
                   </div>
                 </div>
 
-                <div className="w-full box-border">
-                  <label className="block text-[11px] uppercase font-black text-slate-500 mb-3 ml-1">Categoria</label>
-                  <div className="grid grid-cols-4 gap-2 sm:gap-2.5 w-full">
-                     {(transactionType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => {
-                       const isSelected = newItemCategory === cat.id;
-                       return (
-                         <button 
-                           key={cat.id}
-                           onClick={() => setNewItemCategory(cat.id)}
-                           className={cn(
-                             "flex flex-col items-center justify-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-[14px] sm:rounded-2xl border transition-all aspect-square sm:aspect-auto sm:min-h-[90px]",
-                             isSelected 
-                               ? (isDarkMode ? "bg-white/10 border-white/20 text-white ring-2 ring-white/10" : "bg-slate-900 border-slate-900 text-white shadow-premium")
-                               : (isDarkMode ? "bg-white/[0.03] border-white/5 text-slate-400 hover:bg-white/[0.06]" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50")
-                           )}
-                         >
-                           <cat.icon size={24} style={{ color: cat.color }} />
-                           <span className="text-[10px] font-bold tracking-tight whitespace-nowrap">{cat.name}</span>
-                         </button>
-                       )
-                     })}
-                  </div>
-                </div>
-                
-                {formError && (
-                  <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold p-3 rounded-xl text-center w-full box-border">
-                    {formError}
-                  </div>
+                <input
+                  type="text"
+                  placeholder="Ex: AB12CD"
+                  value={joinCode}
+                  onChange={(e) => { setJoinCode(e.target.value.toUpperCase().trim()); setJoinError(null); setJoinSuccess(false); }}
+                  maxLength={10}
+                  className={cn(
+                    "w-full px-5 py-4 rounded-2xl font-black text-center text-2xl tracking-[0.4em] uppercase focus:outline-none placeholder:tracking-normal placeholder:font-medium placeholder:text-base transition-all",
+                    isDarkMode
+                      ? "bg-white/5 text-white placeholder:text-slate-600 border border-white/8"
+                      : "bg-slate-100 text-slate-900 placeholder:text-slate-400 border border-slate-200"
+                  )}
+                />
+
+                {joinError && (
+                  <p className="text-xs text-red-400 font-bold text-center py-2 px-4 rounded-xl mt-3"
+                    style={{ background: "#ef444415" }}>
+                    {joinError}
+                  </p>
                 )}
-                
-                <button 
-                  onClick={handleSaveTransaction}
-                  className="w-full mt-4 py-4 rounded-[20px] font-black uppercase tracking-[0.1em] text-white transition-all flex items-center justify-center gap-3 cursor-pointer hover:scale-[1.02] active:scale-[0.98] box-border shadow-xl shadow-indigo-500/20"
-                  style={{ backgroundColor: transactionType === "expense" ? "#4f46e5" : "#10B981" }}
+
+                {joinSuccess && (
+                  <p className="text-xs text-emerald-400 font-bold text-center py-2 px-4 rounded-xl mt-3"
+                    style={{ background: "#10b98115" }}>
+                    ✓ Calendário encontrado! Aguardando aprovação do administrador.
+                  </p>
+                )}
+
+                <button
+                  onClick={async () => {
+                    if (!joinCode || joinCode.length < 4) {
+                      setJoinError("Digite um código válido.");
+                      return;
+                    }
+                    if (!onJoinCalendar) {
+                      setJoinError("Função não disponível.");
+                      return;
+                    }
+                    setJoinLoading(true);
+                    setJoinError(null);
+                    setJoinSuccess(false);
+                    const ok = await onJoinCalendar(joinCode);
+                    setJoinLoading(false);
+                    if (ok) {
+                      setJoinSuccess(true);
+                      setJoinCode("");
+                    } else {
+                      setJoinError("Código inválido ou expirado. Verifique com o administrador.");
+                    }
+                  }}
+                  disabled={joinLoading || !joinCode}
+                  className="w-full mt-3 py-4 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`, boxShadow: `0 8px 24px -8px ${primaryColor}55` }}
                 >
-                  <Check size={20} strokeWidth={4} />
-                  CONFIRMAR
+                  {joinLoading
+                    ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <LogIn size={18} />
+                  }
+                  Entrar no Calendário
                 </button>
               </div>
             </motion.div>
-          </motion.div>
           )}
-        </AnimatePresence>,
-        document.body
-      )}
-      
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {showFeedback && (
-            <motion.div 
-              initial={{ opacity: 0, y: 50, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.9 }}
-              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[10000] flex items-center gap-3 bg-emerald-500 text-white px-6 py-4 rounded-full shadow-2xl font-tech font-bold tracking-wide"
-          >
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-              <Check size={16} strokeWidth={3} />
-            </div>
-            Registro adicionado com sucesso
-          </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
-    </div>
-  );
-});
+        </AnimatePresence>
+      </div>
+    );
+  }
+);
+
+ShareView.displayName = "ShareView";
